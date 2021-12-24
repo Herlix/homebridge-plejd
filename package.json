@@ -16,7 +16,7 @@
     "homebridge": ">=0.4.0"
   },
   "dependencies": {
-    "@abandonware/bluetooth-hci-socket": "^0.5.3-4",
-    "@abandonware/noble": "^1.9.2-6"
+    "@abandonware/bluetooth-hci-socket": "^0.5.3-8",
+    "@abandonware/noble": "^1.9.2-15"
   }
 }
