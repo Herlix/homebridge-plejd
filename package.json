@@ -1,15 +1,16 @@
 {
-  "name": "homebridge-plejd",
+  "name": "@herlix/homebridge-plejd",
   "version": "1.0.0",
-  "description": "",
+  "description": "Make the swedish BLE devices from Plejd work with homebridge",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "author": "Simon Blommegård",
+  "author": "Alexander Herlin",
   "license": "MIT",
   "keywords": [
-    "homebridge-plugin"
+    "homebridge-plugin",
+    "plejd"
   ],
   "engines": {
     "node": ">=11.0.0",

@@ -1,6 +1,15 @@
-# homebridge-plejd
+# @herlix/homebridge-plejd
 Homebridge plugin for Plejd
 
+### Dependencies needed for RPI
+
+```bash
+sudo apt-get install bluetooth bluez libbluetooth-dev libudev-dev
+```
+
+Check out ble lib [@abandonware/Noble](https://www.npmjs.com/package/@abandonware/noble#start-scanning) for you specific platform
+
+----
 #### Example configuration:
 ```json
 "platforms": [
@@ -29,6 +38,7 @@ Homebridge plugin for Plejd
         }
     ]
 ```
+----
 ## Thanks
 
-Big thanks to [@klali](https://github.com/klali) (https://github.com/klali/ha-plejd) and [@emilohman](https://github.com/emilohman) (https://github.com/emilohman/node-red-contrib-plejd) for their Plejd related projects, this would not be possible without it.
+Big thanks to [@blommegard](https://github.com/blommegard) (https://github.com/blommegard/homebridge-plejd) for the base of this repo
