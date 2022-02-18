@@ -1,16 +1,20 @@
 
-var noble = require('@abandonware/noble');
-var crypto = require('crypto');
-var events = require('events');
-var util = require('util');
+
+
+import { createHash, createCipheriv, randomBytes } from 'crypto';
+import noble from '@abandonware/noble';
+
+import events from 'events';
+import util from 'util';
+import {
+  PLEJD_CHARACTERISTIC_AUTH_UUID,
+  PLEJD_CHARACTERISTIC_DATA_UUID,
+  PLEJD_CHARACTERISTIC_LAST_DATA_UUID,
+  PLEJD_CHARACTERISTIC_PING_UUID,
+  PLEJD_SERVICE_UUID,
+} from '../src/settings';
 
 module.exports = Plejd;
-
-var PLEJD_SERVICE_UUID = '31ba000160854726be45040c957391b5';
-var PLEJD_CHARACTERISTIC_DATA_UUID = '31ba000460854726be45040c957391b5';
-var PLEJD_CHARACTERISTIC_LAST_DATA_UUID = '31ba000560854726be45040c957391b5';
-var PLEJD_CHARACTERISTIC_AUTH_UUID = '31ba000960854726be45040c957391b5';
-var PLEJD_CHARACTERISTIC_PING_UUID = '31ba000a60854726be45040c957391b5';
 
 // 10 = all
 
@@ -31,7 +35,7 @@ util.inherits(Plejd, events.EventEmitter);
 Plejd.prototype.dataCharacteristic = function () {
   if (this.connectedPeripheral && this.connectedPeripheral.services.length > 0) {
     return this.connectedPeripheral.services[0].characteristics.find((char) => {
-      return char.uuid == PLEJD_CHARACTERISTIC_DATA_UUID;
+      return char.uuid === PLEJD_CHARACTERISTIC_DATA_UUID;
     });
   }
   return null;
@@ -39,14 +43,14 @@ Plejd.prototype.dataCharacteristic = function () {
 
 Plejd.prototype.addressBuffer = function () {
   if (this.connectedPeripheral) {
-    return reverseBuffer(Buffer.from(String(this.connectedPeripheral.address).replace(/\:/g, ''), 'hex'));
+    return reverseBuffer(Buffer.from(String(this.connectedPeripheral.address).replace(':', ''), 'hex'));
   }
   return null;
 };
 
 // Start
 Plejd.prototype.stateChange = function (state) {
-  if (state != 'poweredOn') {
+  if (state !== 'poweredOn') {
     this.log('Stopped | ' + state);
     noble.stopScanning();
   }
@@ -71,10 +75,10 @@ Plejd.prototype.disconnect = function (callback) {
 
     this.connectedPeripheral.disconnect(function (error) {
       if (error) {
-        this.log('Error disconnecting peripheral');
+        log('Error disconnecting peripheral');
       }
 
-      this.connectedPeripheral = null;
+      connectedPeripheral = null;
 
       this.log('Disconnected');
 
@@ -111,8 +115,12 @@ Plejd.prototype.connectToPeripheral = function (peripheral, error) {
 
   this.log('Connected | ' + peripheral.advertisement.localName + ' (' + peripheral.address + ')');
 
-  var services = [PLEJD_SERVICE_UUID];
-  var characteristics = [PLEJD_CHARACTERISTIC_DATA_UUID, PLEJD_CHARACTERISTIC_LAST_DATA_UUID, PLEJD_CHARACTERISTIC_AUTH_UUID, PLEJD_CHARACTERISTIC_PING_UUID];
+  const services = [PLEJD_SERVICE_UUID];
+  const characteristics = [
+    PLEJD_CHARACTERISTIC_DATA_UUID,
+    PLEJD_CHARACTERISTIC_LAST_DATA_UUID,
+    PLEJD_CHARACTERISTIC_AUTH_UUID,
+    PLEJD_CHARACTERISTIC_PING_UUID];
 
   peripheral.discoverSomeServicesAndCharacteristics(services, characteristics, (error, services, characteristics) => {
     this.discovered(error, peripheral, services, characteristics);
@@ -130,16 +138,16 @@ Plejd.prototype.discovered = function (error, peripheral, services, characterist
     return;
   }
 
-  var authChar = characteristics.find((char) => {
-    return char.uuid == PLEJD_CHARACTERISTIC_AUTH_UUID;
+  const authChar = characteristics.find((char) => {
+    return char.uuid === PLEJD_CHARACTERISTIC_AUTH_UUID;
   });
 
-  var lastDataChar = characteristics.find((char) => {
-    return char.uuid == PLEJD_CHARACTERISTIC_LAST_DATA_UUID;
+  const lastDataChar = characteristics.find((char) => {
+    return char.uuid === PLEJD_CHARACTERISTIC_LAST_DATA_UUID;
   });
 
-  var pingChar = characteristics.find((char) => {
-    return char.uuid == PLEJD_CHARACTERISTIC_PING_UUID;
+  const pingChar = characteristics.find((char) => {
+    return char.uuid === PLEJD_CHARACTERISTIC_PING_UUID;
   });
 
   this.plejdAuth(authChar, () => {
@@ -157,21 +165,21 @@ Plejd.prototype.discovered = function (error, peripheral, services, characterist
 };
 
 Plejd.prototype.gotData = function (data, isNotification) {
-  let decodedData = plejdEncodeDecode(this.key, this.addressBuffer(), data);
+  const decodedData = plejdEncodeDecode(this.key, this.addressBuffer(), data);
 
-  var state = null;
+  let state = 0;
 
-  var id = parseInt(decodedData[0], 10);
-  var command = decodedData.toString('hex', 3, 5);
-  var argument = parseInt(decodedData.toString('hex', 5, 6), 10);
+  const id = parseInt(decodedData[0].toString(), 10);
+  const command = decodedData.toString('hex', 3, 5);
+  const argument = parseInt(decodedData.toString('hex', 5, 6), 10);
 
   this.log('--');
   this.log(decodedData);
 
   if (command === '001b') {
     // time
-    var argument = parseInt(reverseBuffer(decodedData.slice(5, 9)).toString('hex'), 16);
-    var date = new Date(argument * 1000);
+    const argument = parseInt(reverseBuffer(decodedData.slice(5, 9)).toString('hex'), 16);
+    const date = new Date(argument * 1000);
 
     this.log('Time sync: ' + date.toString());
     return;
@@ -183,7 +191,7 @@ Plejd.prototype.gotData = function (data, isNotification) {
     // 00c8, 0098 = state + dim
     // state 0 or 1
     state = argument;
-    var dim = parseInt(decodedData.toString('hex', 7, 8), 16);
+    const dim = parseInt(decodedData.toString('hex', 7, 8), 16);
 
     this.log(id + ' state: ' + state + ' dim: ' + dim);
 
@@ -204,31 +212,31 @@ Plejd.prototype.gotData = function (data, isNotification) {
 };
 
 Plejd.prototype.turnOn = function (device, brightness) {
-  let char = this.dataCharacteristic();
+  const char = this.dataCharacteristic();
   if (!char) {
     return;
   }
 
-  var command = (brightness != null) ? '0098' : '0097';
+  const command = (brightness !== null) ? '0098' : '0097';
 
-  var payload = Buffer.from((device).toString(16).padStart(2, '0') + '0110' + command + '01', 'hex');
+  let payload = Buffer.from((device).toString(16).padStart(2, '0') + '0110' + command + '01', 'hex');
 
-  if (brightness != null) {
+  if (brightness !== null) {
     payload = Buffer.concat([payload, Buffer.from(brightness.toString(16).padStart(4, '0'), 'hex')]);
   }
 
-  let data = plejdEncodeDecode(this.key, this.addressBuffer(), payload);
+  const data = plejdEncodeDecode(this.key, this.addressBuffer(), payload);
   this.plejdWrite(char, data);
 };
 
 Plejd.prototype.turnOff = function (device) {
-  let char = this.dataCharacteristic();
+  const char = this.dataCharacteristic();
   if (!char) {
     return;
   }
 
-  let payload = Buffer.from((device).toString(16).padStart(2, '0') + '0110009700', 'hex');
-  let data = plejdEncodeDecode(this.key, this.addressBuffer(), payload);
+  const payload = Buffer.from((device).toString(16).padStart(2, '0') + '0110009700', 'hex');
+  const data = plejdEncodeDecode(this.key, this.addressBuffer(), payload);
   this.plejdWrite(char, data);
 };
 
@@ -287,7 +295,7 @@ Plejd.prototype.plejdAuth = function (authChar, callback) {
 };
 
 Plejd.prototype.plejdPing = function (pingChar, callback) {
-  var ping = crypto.randomBytes(1);
+  const ping = randomBytes(1);
 
   pingChar.write(ping, false, (error) => {
     if (error) {
@@ -314,45 +322,45 @@ Plejd.prototype.plejdPing = function (pingChar, callback) {
 
 // Plejd Utilities
 function plejdChalResp(key, chal) {
-  let intermediate = crypto.createHash('sha256').update(xor(key, chal)).digest();
+  const intermediate = createHash('sha256').update(xor(key, chal)).digest();
 
-  let part1 = intermediate.slice(0, 16);
-  let part2 = intermediate.slice(16);
+  const part1 = intermediate.slice(0, 16);
+  const part2 = intermediate.slice(16);
 
   return xor(part1, part2);
 }
 
-function plejdEncodeDecode(key, adressBuffer, data) {
-  var buf = Buffer.concat([adressBuffer, adressBuffer, adressBuffer.subarray(0, 4)]);
+function plejdEncodeDecode(key, adressBuffer, data): Buffer {
+  const buf = Buffer.concat([adressBuffer, adressBuffer, adressBuffer.subarray(0, 4)]);
 
-  var cipher = crypto.createCipheriv('aes-128-ecb', key, '');
+  const cipher = createCipheriv('aes-128-ecb', key, '');
   cipher.setAutoPadding(false);
 
-  var ct = cipher.update(buf).toString('hex');
+  let ct = cipher.update(buf).toString('hex');
   ct += cipher.final().toString('hex');
-  ct = Buffer.from(ct, 'hex');
+  const ctBuff = Buffer.from(ct, 'hex');
 
-  var output = '';
-  for (var i = 0, length = data.length; i < length; i++) {
-    output += String.fromCharCode(data[i] ^ ct[i % 16]);
+  let output = '';
+  for (let i = 0, length = data.length; i < length; i++) {
+    output += String.fromCharCode(data[i] ^ ctBuff[i % 16]);
   }
 
   return Buffer.from(output, 'ascii');
 }
 
 // Utilities
-function xor(first, second) {
-  var result = Buffer.alloc(first.length);
-  for (var i = 0; i < first.length; i++) {
+function xor(first: Buffer, second: Buffer): Buffer {
+  const result = Buffer.alloc(first.length);
+  for (let i = 0; i < first.length; i++) {
     result[i] = first[i] ^ second[i];
   }
   return result;
 }
 
-function reverseBuffer(src) {
-  var buffer = Buffer.allocUnsafe(src.length);
+function reverseBuffer(src: Buffer): Buffer {
+  const buffer = Buffer.allocUnsafe(src.length);
 
-  for (var i = 0, j = src.length - 1; i <= j; ++i, --j) {
+  for (let i = 0, j = src.length - 1; i <= j; ++i, --j) {
     buffer[i] = src[j];
     buffer[j] = src[i];
   }

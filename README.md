@@ -10,34 +10,14 @@ sudo apt-get install bluetooth bluez libbluetooth-dev libudev-dev
 Check out ble lib [@abandonware/Noble](https://www.npmjs.com/package/@abandonware/noble#start-scanning) for you specific platform
 
 ----
-#### Example configuration:
-```json
-"platforms": [
-        {
-            "platform": "plejd",
-            "key": "82-82-91-3E-90-F1-4A-42-C0-84-B7-CB-A4-2B-91-FD",
-            "devices": [
-                {
-                    "name": "Mirror",
-                    "model": "DIM-02",
-                    "identifier": 11,
-                    "dimming": true
-                },
-                {
-                    "name": "Shower",
-                    "model": "DIM-02",
-                    "identifier": 12,
-                    "dimming": true
-                },
-                {
-                    "name": "Towel Dryer",
-                    "model": "CTR-01",
-                    "identifier": 13
-                }
-            ]
-        }
-    ]
-```
+#### TODO: Extract crypto key
+
+TODO!
+
+For now look for guides online. Backup your phone unencrypted. Download an extracter and look for a .site file within plejd. 
+
+```com.plejd.consumer.light ... .site .... .PlejdMesh.CryptoKey ```
+
 ----
 ## Thanks
 

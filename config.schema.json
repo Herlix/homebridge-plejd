@@ -1,15 +1,50 @@
 {
-  "pluginAlias": "ExampleHomebridgePlugin",
+  "pluginAlias": "Plejd",
   "pluginType": "platform",
+  "headerDisplay": "Add your crypto key & your Plejd devices",
+  "footerDisplay": "Tip: Plejd app -> Settings -> Devices -> Click on device -> About device",
   "singular": true,
   "schema": {
-    "type": "object",
-    "properties": {
-      "name": {
-        "title": "Name",
-        "type": "string",
-        "required": true,
-        "default": "Example Dynamic Platform"
+    "crypto_key": {
+      "title": "Crypto key",
+      "type": "string",
+      "required": true,
+      "placeholder": "82-82-91-3E-90-F1-4A-42-C0-84-B7-CB-A4-2B-91-FD"
+    },
+    "devices": {
+      "type": "array",
+      "items": {
+        "title": "Device",
+        "type": "object",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string",
+            "placeholder": "Kitchen table",
+            "required": true
+          },
+          "model": {
+            "title": "Model",
+            "type": "string",
+            "enum": [
+              "CTR-01",
+              "DAL-01",
+              "DIM-01",
+              "DIM-02",
+              "LED-10",
+              "REL-01-2P",
+              "REL-02",
+              "SPR-01"
+            ],
+            "required": true
+          },
+          "identifier": {
+            "title": "Identifier",
+            "type": "integer",
+            "placeholder": "11",
+            "required": true
+          }
+        }
       }
     }
   }
