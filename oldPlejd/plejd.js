@@ -30,7 +30,7 @@ util.inherits(Plejd, events.EventEmitter);
 // Lazy varaibales
 Plejd.prototype.dataCharacteristic = function () {
   if (this.connectedPeripheral && this.connectedPeripheral.services.length > 0) {
-    return this.connectedPeripheral.services[0].characteristics.find(function (char) {
+    return this.connectedPeripheral.services[0].characteristics.find((char) => {
       return char.uuid == PLEJD_CHARACTERISTIC_DATA_UUID;
     });
   }
@@ -47,17 +47,17 @@ Plejd.prototype.addressBuffer = function () {
 // Start
 Plejd.prototype.stateChange = function (state) {
   if (state != 'poweredOn') {
-    this.log("Stopped | " + state);
+    this.log('Stopped | ' + state);
     noble.stopScanning();
   }
 
-  this.log("Started | " + state);
+  this.log('Started | ' + state);
 
   this.startConnection();
 };
 
 Plejd.prototype.startConnection = function () {
-  if (noble.state == 'poweredOn') {
+  if (noble.state === 'poweredOn') {
     noble.startScanning([PLEJD_SERVICE_UUID], false);
     noble.once('discover', this.discover.bind(this)); // Only once
   }
@@ -92,68 +92,68 @@ Plejd.prototype.disconnect = function (callback) {
 };
 
 Plejd.prototype.discover = function (peripheral) {
-  this.log("Discovered | " + peripheral.advertisement.localName + " (" + peripheral.address + ") | RSSI " + peripheral.rssi + "dB");
+  this.log('Discovered | ' + peripheral.advertisement.localName + ' (' + peripheral.address + ') | RSSI ' + peripheral.rssi + 'dB');
 
   noble.stopScanning();
 
-  peripheral.connect(function (error) {
+  peripheral.connect((error) => {
     this.connectToPeripheral(peripheral, error);
-  }.bind(this));
+  });
 };
 
 Plejd.prototype.connectToPeripheral = function (peripheral, error) {
   if (error) {
-    this.log("Connecting failed | " + peripheral.advertisement.localName + " (" + peripheral.address + ") | " + error);
+    this.log('Connecting failed | ' + peripheral.advertisement.localName + ' (' + peripheral.address + ') | ' + error);
     return;
   }
 
   this.connectedPeripheral = peripheral;
 
-  this.log("Connected | " + peripheral.advertisement.localName + " (" + peripheral.address + ")");
+  this.log('Connected | ' + peripheral.advertisement.localName + ' (' + peripheral.address + ')');
 
   var services = [PLEJD_SERVICE_UUID];
   var characteristics = [PLEJD_CHARACTERISTIC_DATA_UUID, PLEJD_CHARACTERISTIC_LAST_DATA_UUID, PLEJD_CHARACTERISTIC_AUTH_UUID, PLEJD_CHARACTERISTIC_PING_UUID];
 
-  peripheral.discoverSomeServicesAndCharacteristics(services, characteristics, function (error, services, characteristics) {
+  peripheral.discoverSomeServicesAndCharacteristics(services, characteristics, (error, services, characteristics) => {
     this.discovered(error, peripheral, services, characteristics);
-  }.bind(this));
+  });
 
-  peripheral.once('disconnect', function () {
+  peripheral.once('disconnect', () => {
     this.log('Peripheral disconnected');
     this.connectedPeripheral = null;
-  }.bind(this));
+  });
 };
 
 Plejd.prototype.discovered = function (error, peripheral, services, characteristics) {
   if (error) {
-    this.log("Discover failed | " + peripheral.advertisement.localName + " (" + peripheral.address + ") | " + error);
+    this.log('Discover failed | ' + peripheral.advertisement.localName + ' (' + peripheral.address + ') | ' + error);
     return;
   }
 
-  var authChar = characteristics.find(function (char) {
+  var authChar = characteristics.find((char) => {
     return char.uuid == PLEJD_CHARACTERISTIC_AUTH_UUID;
   });
 
-  var lastDataChar = characteristics.find(function (char) {
+  var lastDataChar = characteristics.find((char) => {
     return char.uuid == PLEJD_CHARACTERISTIC_LAST_DATA_UUID;
   });
 
-  var pingChar = characteristics.find(function (char) {
+  var pingChar = characteristics.find((char) => {
     return char.uuid == PLEJD_CHARACTERISTIC_PING_UUID;
   });
 
-  this.plejdAuth(authChar, function () {
+  this.plejdAuth(authChar, () => {
     this.startPlejdPing(pingChar);
 
-    lastDataChar.subscribe(function (error) {
+    lastDataChar.subscribe((error) => {
       if (error) {
-        this.log("Error subscribing | " + error);
+        this.log('Error subscribing | ' + error);
         return;
       }
 
       lastDataChar.on('data', this.gotData.bind(this));
-    }.bind(this));
-  }.bind(this));
+    });
+  });
 };
 
 Plejd.prototype.gotData = function (data, isNotification) {
@@ -165,7 +165,7 @@ Plejd.prototype.gotData = function (data, isNotification) {
   var command = decodedData.toString('hex', 3, 5);
   var argument = parseInt(decodedData.toString('hex', 5, 6), 10);
 
-  this.log("--");
+  this.log('--');
   this.log(decodedData);
 
   if (command === '001b') {
@@ -205,7 +205,9 @@ Plejd.prototype.gotData = function (data, isNotification) {
 
 Plejd.prototype.turnOn = function (device, brightness) {
   let char = this.dataCharacteristic();
-  if (!char) { return; }
+  if (!char) {
+    return;
+  }
 
   var command = (brightness != null) ? '0098' : '0097';
 
@@ -221,7 +223,9 @@ Plejd.prototype.turnOn = function (device, brightness) {
 
 Plejd.prototype.turnOff = function (device) {
   let char = this.dataCharacteristic();
-  if (!char) { return; }
+  if (!char) {
+    return;
+  }
 
   let payload = Buffer.from((device).toString(16).padStart(2, '0') + '0110009700', 'hex');
   let data = plejdEncodeDecode(this.key, this.addressBuffer(), payload);
@@ -230,67 +234,70 @@ Plejd.prototype.turnOff = function (device) {
 
 Plejd.prototype.startPlejdPing = function (pingChar) {
   clearInterval(this.pingIndex);
-  this.pingIndex = setInterval(function () {
+  this.pingIndex = setInterval(() => {
     if (this.connectedPeripheral) {
-      this.plejdPing(pingChar, function (pingOk) {
+      this.plejdPing(pingChar, (pingOk) => {
         if (pingOk === false) {
-          this.disconnect(function () {
+          this.disconnect(() => {
             this.startConnection();
-          }.bind(this));
+          });
         }
-      }.bind(this));
+      });
     } else {
-      this.disconnect(function () {
+      this.disconnect(() => {
         this.startConnection();
-      }.bind(this));
+      });
     }
-  }.bind(this), 1000 * 60 * 3);
+  }, 1000 * 60 * 3);
 };
 
 // Plejd Helpers
 Plejd.prototype.plejdWrite = function (dataChar, data) {
-  dataChar.write(data, false, function (error) {
+  dataChar.write(data, false, (error) => {
     if (error) {
       this.log('Error writing data | ' + error);
       return;
     }
-  }.bind(this));
+  });
 };
 
 Plejd.prototype.plejdAuth = function (authChar, callback) {
-  authChar.write(Buffer.from([0x00]), false, function (error) {
+  if (authChar === null || authChar === undefined) {
+    return;
+  }
+  authChar.write(Buffer.from([0x00]), false, (error) => {
     if (error) {
-      this.log("Error writing auth start | " + error);
+      this.log('Error writing auth start | ' + error);
     }
 
-    authChar.read(function (error, data) {
+    authChar.read((error, data) => {
       if (error) {
-        this.log("Error reading auth | " + error);
+        this.log('Error reading auth | ' + error);
       }
 
-      authChar.write(plejdChalResp(this.key, data), false, function (error) {
+      authChar.write(plejdChalResp(this.key, data), false, (error) => {
         if (error) {
-          this.log("Error writing auth chal | " + error);
+          this.log('Error writing auth chal | ' + error);
         }
 
         callback();
-      }.bind(this));
-    }.bind(this));
-  }.bind(this));
+      });
+    });
+  });
 };
 
 Plejd.prototype.plejdPing = function (pingChar, callback) {
   var ping = crypto.randomBytes(1);
 
-  pingChar.write(ping, false, function (error) {
+  pingChar.write(ping, false, (error) => {
     if (error) {
-      this.log("Error sending ping | " + error);
+      this.log('Error sending ping | ' + error);
       return callback(false);
     }
 
-    pingChar.read(function (error, pong) {
+    pingChar.read((error, pong) => {
       if (error) {
-        this.log("Error reading pong | " + error);
+        this.log('Error reading pong | ' + error);
         return callback(false);
       }
 
@@ -301,8 +308,8 @@ Plejd.prototype.plejdPing = function (pingChar, callback) {
         this.log('Ping success: ' + ping[0] + ' ' + pong[0]);
         callback(true);
       }
-    }.bind(this));
-  }.bind(this));
+    });
+  });
 };
 
 // Plejd Utilities
@@ -325,7 +332,7 @@ function plejdEncodeDecode(key, adressBuffer, data) {
   ct += cipher.final().toString('hex');
   ct = Buffer.from(ct, 'hex');
 
-  var output = "";
+  var output = '';
   for (var i = 0, length = data.length; i < length; i++) {
     output += String.fromCharCode(data[i] ^ ct[i % 16]);
   }

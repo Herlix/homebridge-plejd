@@ -111,11 +111,11 @@ PlejdPlatform.prototype.createPlejdAccessory = function (config) {
   var newAccessory = new Accessory(config.name, UUIDGen.generate(config.identifier.toString()));
   newAccessory.context.config = config;
 
-  if (config.model === 'CTR-01') {
+  var lights = ['DIM-01', 'DIM-02', 'LED-10'];
+  var switches = ['REL-02', 'REL-01-2P', 'DAL-01', 'SPR-01', 'CTR-01'];
+  if (switches.includes(config.model)) {
     newAccessory.addService(Service.Switch, config.name);
-  } else if (config.model === 'DIM-01') {
-    newAccessory.addService(Service.Lightbulb, config.name);
-  } else if (config.model === 'DIM-02') {
+  } else if (lights.includes(config.model)) {
     newAccessory.addService(Service.Lightbulb, config.name);
   } else {
     this.log('Unknown accessory model ' + config.model);

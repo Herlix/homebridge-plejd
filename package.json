@@ -1,23 +1,46 @@
 {
+  "private": false,
+  "displayName": "homebridge-plejd",
   "name": "@herlix/homebridge-plejd",
-  "version": "1.0.0",
-  "description": "Make the swedish BLE devices from Plejd work with homebridge",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
   "author": "Alexander Herlin",
+  "version": "1.0.2",
+  "description": "Make the swedish BLE devices from Plejd work with homebridge.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:Herlix/homebridge-plejd.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Herlix/homebridge-plejd/issues"
+  },
+  "engines": {
+    "node": ">=14.18.1",
+    "homebridge": ">=1.3.5"
+  },
+  "main": "dist/index.js",
+  "scripts": {
+    "lint": "eslint src/**.ts --max-warnings=0",
+    "watch": "npm run build && npm link && nodemon",
+    "build": "rimraf ./dist && tsc",
+    "prepublishOnly": "npm run lint && npm run build"
+  },
   "keywords": [
     "homebridge-plugin",
     "plejd"
   ],
-  "engines": {
-    "node": ">=11.0.0",
-    "homebridge": ">=0.4.0"
-  },
   "dependencies": {
     "@abandonware/bluetooth-hci-socket": "^0.5.3-8",
     "@abandonware/noble": "^1.9.2-15"
+  },
+  "devDependencies": {
+    "@types/node": "^16.10.9",
+    "@typescript-eslint/eslint-plugin": "^5.0.0",
+    "@typescript-eslint/parser": "^5.0.0",
+    "eslint": "^8.0.1",
+    "homebridge": "^1.3.5",
+    "nodemon": "^2.0.13",
+    "rimraf": "^3.0.2",
+    "ts-node": "^10.3.0",
+    "typescript": "^4.4.4"
   }
 }
