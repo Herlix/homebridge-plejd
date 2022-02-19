@@ -213,7 +213,7 @@ export class PlejdService {
           this.log.error('Ping failed: ' + ping[0] + ' ' + pong[0]);
           callback(false);
         } else {
-          this.log.error('Ping success: ' + ping[0] + ' ' + pong[0]);
+          this.log.debug('Ping success: ' + ping[0] + ' ' + pong[0]);
           callback(true);
         }
       });

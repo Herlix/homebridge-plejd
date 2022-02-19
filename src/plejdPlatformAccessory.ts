@@ -1,4 +1,4 @@
-import { Service, PlatformAccessory, CharacteristicValue, Logger } from 'homebridge';
+import { Service, PlatformAccessory, CharacteristicValue } from 'homebridge';
 import { Device } from './model';
 
 import { PlejdPlatform } from './plejdPlatform';
@@ -75,7 +75,6 @@ export class PlejdPlatformAccessory {
   }
 
   async setBrightness(value: CharacteristicValue) {
-    this.platform.log.info(`Brightness value: ${value}`);
     const dim = value as number;
     this.deviceState.Brightness = dim;
     this.platform.log.debug('Set Characteristic Brightness', this.device.name, dim);

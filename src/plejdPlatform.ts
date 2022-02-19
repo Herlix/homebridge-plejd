@@ -33,7 +33,6 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
       devices: devs,
       cryptoKey: cryptoKey,
     };
-    this.log.warn(`UserConfig key length: ${this.userInputConfig.cryptoKey.byteLength} bytes`);
     this.log.debug('UserConfig: ', this.userInputConfig);
     this.plejdService = new PlejdService(this.userInputConfig, log, this.onPlejdUpdates.bind(this));
 
