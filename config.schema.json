@@ -9,7 +9,8 @@
       "title": "Crypto key",
       "type": "string",
       "required": true,
-      "placeholder": "82-82-91-3E-90-F1-4A-42-C0-84-B7-CB-A4-2B-91-FD"
+      "placeholder": "828291.. or 82-82-91...",
+      "description": "With or without '-' "
     },
     "devices": {
       "type": "array",

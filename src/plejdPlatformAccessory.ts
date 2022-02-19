@@ -34,7 +34,7 @@ export class PlejdPlatformAccessory {
     this.accessory.getService(this.platform.Service.AccessoryInformation)!
       .setCharacteristic(this.platform.Characteristic.Manufacturer, PLATFORM_NAME)
       .setCharacteristic(this.platform.Characteristic.Model, this.device.model)
-      .setCharacteristic(this.platform.Characteristic.SerialNumber, this.device.identifier);
+      .setCharacteristic(this.platform.Characteristic.SerialNumber, this.device.identifier.toString());
 
     if (this.device.isDimmer) {
       // get the LightBulb service if it exists, otherwise create a new LightBulb service

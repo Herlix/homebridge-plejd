@@ -7,7 +7,7 @@ Homebridge plugin for Plejd
 sudo apt-get install bluetooth bluez libbluetooth-dev libudev-dev
 ```
 
-Check out ble lib [@abandonware/Noble](https://www.npmjs.com/package/@abandonware/noble#start-scanning) for you specific platform
+Check out ble lib [@abandonware/Noble](https://github.com/abandonware/noble) for you specific platform
 
 ----
 #### TODO: Extract crypto key

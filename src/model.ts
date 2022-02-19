@@ -3,6 +3,7 @@ export interface Device {
     model: string;
     identifier: number;
     isDimmer: boolean;
+    uuid: string;
 }
 
 export interface UserInputConfig {

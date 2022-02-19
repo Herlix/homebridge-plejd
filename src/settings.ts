@@ -6,7 +6,7 @@ export const PLATFORM_NAME = 'Plejd';
 /**
  * This must match the name of your plugin as defined the package.json
  */
-export const PLUGIN_NAME = '@herlix/homebridge-plejd';
+export const PLUGIN_NAME = 'homebridge-plejd';
 
 /**
  * Lights and switches from Plejd

@@ -21,13 +21,11 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
     public readonly api: API,
   ) {
     this.log.debug('Finished initializing platform:', this.config.platform);
-
-    this.plejdService = new PlejdService(log, this.onPlejdUpdates);
-
     // Update this to have it computed.
     const devs = config['devices'] as Device[];
     for (let i=0;i<devs.length;i++) {
       devs[i].isDimmer = PLEJD_LIGHTS.includes((devs[i].model));
+      devs[i].uuid = this.generateId(devs[i].identifier.toString());
     }
 
     const cryptoKey = Buffer.from(config['crypto_key'].replace(/-/g, ''), 'hex');
@@ -35,6 +33,9 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
       devices: devs,
       cryptoKey: cryptoKey,
     };
+
+    this.log.debug('UserConfig: ', this.userInputConfig);
+    this.plejdService = new PlejdService(this.userInputConfig, log, this.onPlejdUpdates);
 
     this.api.on('didFinishLaunching', () => {
       this.discoverDevices();
@@ -56,9 +57,14 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
  * must not be registered again to prevent "duplicate UUID" errors.
  */
   discoverDevices() {
+    const units = this.userInputConfig.devices.map(x => x.uuid);
+    const notRegistered = this.accessories.filter(ac => !units.includes(ac.UUID));
+    if (notRegistered.length > 0) {
+      this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, notRegistered);
+    }
+
     for (const device of this.userInputConfig.devices) {
-      const uuid = this.api.hap.uuid.generate(device.identifier.toString());
-      const existingAccessory = this.accessories.find(accessory => accessory.UUID === uuid);
+      const existingAccessory = this.accessories.find(accessory => accessory.UUID === device.uuid);
 
       if (existingAccessory) {
         this.log.info('Restoring existing accessory from cache:', existingAccessory.displayName);
@@ -69,13 +75,9 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
         // Create a handle for the device to take care of logic
         // lives for as long as "this" is active.
         new PlejdPlatformAccessory(this, existingAccessory);
-
-        // To remove accessory:
-        // this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [existingAccessory]);
-        // this.log.info('Removing existing accessory from cache:', existingAccessory.displayName);
       } else {
         this.log.info('Adding new accessory:', device.name);
-        const accessory = new this.api.platformAccessory(device.name, uuid);
+        const accessory = new this.api.platformAccessory(device.name, device.uuid);
         accessory.context.device = device;
 
         // See above.
@@ -87,10 +89,13 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
     }
   }
 
-  // TODO: Call from plejd service once that's built
   onPlejdUpdates(identifier: number, state: number, dim?: number) {
-    const uuid = this.api.hap.uuid.generate(identifier.toString());
-    const existingAccessory = this.accessories.find(accessory => accessory.UUID === uuid);
+    const uuid = this.userInputConfig.devices.find(d => d.identifier === identifier)?.uuid;
+    if (uuid === undefined) {
+      this.log.warn(`Got updates on a device with identifier ${identifier} but it is not registered in HB settings`);
+      return;
+    }
+    const existingAccessory = this.accessories.find(accessory => accessory.UUID === uuid!);
     const device = this.userInputConfig.devices.find(dev => dev.identifier === identifier);
     if (existingAccessory && device) {
       if (device.isDimmer) {
@@ -104,5 +109,10 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
           ?.updateValue(state);
       }
     }
+
+  }
+
+  private generateId(input: string): string {
+    return this.api.hap.uuid.generate(input);
   }
 }
