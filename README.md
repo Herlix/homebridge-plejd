@@ -2,9 +2,9 @@
 <SPAN ALIGN="CENTER" STYLE="text-align:center">
 <DIV ALIGN="CENTER" STYLE="text-align:center">
 
-# [Homebridge](https://homebridge.io) [Plejd](https://www.plejd.com)
+# [Plejd](https://www.plejd.com)
 
-## HomeKit support for the Plejd BLE platform using Homebridge
+## HomeKit support for the Plejd BLE platform using [Homebridge](https://homebridge.io)
 </DIV>
 </SPAN>
 
