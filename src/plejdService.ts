@@ -31,9 +31,8 @@ export class PlejdService {
 
   turnOn(identifier: number, brightness?: number) {
     const char = this.dataCharacteristic();
-    this.log.debug(`TurnOn ${identifier}, brightness: ${brightness}`);
     if (!char) {
-      this.log.debug('TurnOn characteristic not found');
+      this.log.warn('TurnOn characteristic not found');
       return;
     }
     const command = (brightness !== undefined) ? '0098' : '0097';
@@ -44,19 +43,23 @@ export class PlejdService {
       payload = Buffer.concat([payload, Buffer.from(brightness!.toString(16).padStart(4, '0'), 'hex')]);
     }
 
-    const data = plejdEncodeDecode(this.config.cryptoKey, this.addressBuffer(), payload);
+    const addr = this.addressBuffer();
+    if (!addr) {
+      return;
+    }
+    const data = plejdEncodeDecode(this.config.cryptoKey, addr!, payload);
     this.plejdWrite(char, data);
   }
 
   turnOff(identifier: number) {
-    this.log.debug('TurnOff', identifier);
     const char = this.dataCharacteristic();
-    if (!char) {
+    const addr = this.addressBuffer();
+    if (!char || !addr) {
       return;
     }
 
     const payload = Buffer.from((identifier).toString(16).padStart(2, '0') + '0110009700', 'hex');
-    const data = plejdEncodeDecode(this.config.cryptoKey, this.addressBuffer(), payload);
+    const data = plejdEncodeDecode(this.config.cryptoKey, addr!, payload);
     this.plejdWrite(char, data);
 
   }
@@ -79,7 +82,6 @@ export class PlejdService {
   }
 
   private discover(peripheral: noble.Peripheral) {
-    this.log.debug('Discover - Peripheral: ', peripheral);
     this.log.info(`Discovered | ${peripheral.advertisement.localName} | addr: ${peripheral.address} | RSSI: ${peripheral.rssi} dB`);
 
     noble.stopScanning();
@@ -240,16 +242,17 @@ export class PlejdService {
 
   private gotData(data: Buffer, isNotification: boolean) {
     this.log.debug(`GotData: data: ${data} - isNotification: ${isNotification}`);
-    const decodedData = plejdEncodeDecode(this.config.cryptoKey, this.addressBuffer(), data);
+    const addr = this.addressBuffer();
+    if (!addr) {
+      return;
+    }
 
+    const decodedData = plejdEncodeDecode(this.config.cryptoKey, addr!, data);
     let state = 0;
 
     const id = parseInt(decodedData[0].toString(), 10);
     const command = decodedData.toString('hex', 3, 5);
     const argument = parseInt(decodedData.toString('hex', 5, 6), 10);
-
-    this.log.debug('--');
-    this.log.debug(decodedData.toString());
 
     if (command === '001b') {
       // time
@@ -281,7 +284,7 @@ export class PlejdService {
       this.onUpdate(id, state);
       return;
     } else {
-      this.log.debug('Unknown command: ' + command + ' for device: ' + id + ' ' + (decodedData.toString('hex')));
+      this.log.warn('Unknown command: ' + command + ' for device: ' + id + ' ' + (decodedData.toString('hex')));
       return;
     }
   }
@@ -297,8 +300,7 @@ export class PlejdService {
 
   private addressBuffer() {
     if (this.connectedPeripheral) {
-      this.log.debug(`ConnectedPeripheral addr: ${this.connectedPeripheral.address} - addrType: ${this.connectedPeripheral.addressType}`);
-      return reverseBuffer(Buffer.from(String(this.connectedPeripheral.address).replace(':', ''), 'hex'));
+      return reverseBuffer(Buffer.from(String(this.connectedPeripheral.address).replace(/:/g, ''), 'hex'));
     }
     return null;
   }
