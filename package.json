@@ -3,7 +3,7 @@
   "displayName": "Plejd",
   "name": "homebridge-plejd",
   "author": "Alexander Herlin",
-  "version": "1.1.1-beta.0",
+  "version": "1.1.2-beta.0",
   "description": "Make the swedish BLE devices from Plejd work with homebridge.",
   "license": "MIT",
   "repository": {
