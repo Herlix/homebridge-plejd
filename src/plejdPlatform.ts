@@ -100,8 +100,10 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
       if (device.isDimmer) {
         const ser = existingAccessory.getService(this.Service.Lightbulb);
         ser?.getCharacteristic(this.Characteristic.On)?.updateValue(state);
-        ser?.getCharacteristic(this.Characteristic.Brightness)
-          .updateValue(dim === 0 ? 1 : ((100 / 255) * dim!));
+        if (dim !== undefined) {
+          ser?.getCharacteristic(this.Characteristic.Brightness)
+            .updateValue(dim === 0 ? 1 : ((100 / 255) * dim!));
+        }
       } else {
         existingAccessory.getService(this.Service.Switch)
           ?.getCharacteristic(this.Characteristic.On)
