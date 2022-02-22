@@ -55,18 +55,14 @@ export class PlejdPlatformAccessory {
       .onGet(this.getOn.bind(this));
 
     this.service.setCharacteristic(this.platform.Characteristic.Name, this.device.name);
-
   }
 
   async setOn(value: CharacteristicValue) {
+    const old = this.deviceState.On;
     this.deviceState.On = value as boolean;
-    this.platform.log.debug('Set Characteristic On', this.device.name, this.deviceState.On);
-
-    if(this.deviceState.On) {
-      this.platform.plejdService.turnOn(this.device.identifier);
-    } else {
-      this.platform.plejdService.turnOff(this.device.identifier);
-    }
+    this.platform.log.info(`Updating state for ${this.device.name} setting it to ${ this.deviceState.On ? 'On' : 'off'} ` +
+      `from ${ old ? 'On' : 'Off'}`);
+    this.platform.plejdService.updateState(this.device.identifier, this.deviceState.On);
   }
 
   async getOn(): Promise<CharacteristicValue> {
@@ -75,10 +71,12 @@ export class PlejdPlatformAccessory {
   }
 
   async setBrightness(value: CharacteristicValue) {
-    const dim = value as number;
-    this.deviceState.Brightness = dim;
-    this.platform.log.debug('Set Characteristic Brightness', this.device.name, dim);
-    this.platform.plejdService.turnOn(this.device.identifier, dim === 0 ? 1 : Math.round((2.55 * dim!)));
+    const old = this.deviceState.Brightness;
+    this.deviceState.Brightness = value as number; // Number between 1-100
+    this.platform.log.info(`Updating brightness for ${this.device.name} setting it ` +
+      `to ${ this.deviceState.Brightness } from ${old} ` +
+      `with state ${ this.deviceState.On ? 'On' : 'off'}`);
+    this.platform.plejdService.updateState(this.device.identifier, this.deviceState.On, this.deviceState.Brightness);
   }
 
   async getBrightness(): Promise<CharacteristicValue> {

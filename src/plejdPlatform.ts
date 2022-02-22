@@ -97,12 +97,14 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
     const existingAccessory = this.accessories.find(accessory => accessory.UUID === uuid!);
     const device = this.userInputConfig.devices.find(dev => dev.identifier === identifier);
     if (existingAccessory && device) {
+      this.log.debug(`onPlejdUpdates | Updating state for ${device.name} setting it to ${ state === 1 ? 'On' : 'off'}`);
       if (device.isDimmer) {
         const ser = existingAccessory.getService(this.Service.Lightbulb);
         ser?.getCharacteristic(this.Characteristic.On)?.updateValue(state);
         if (dim !== undefined) {
+          this.log.debug(`onPlejdUpdates | Updating brightness for ${device.name} setting it to ${ dim }`);
           ser?.getCharacteristic(this.Characteristic.Brightness)
-            .updateValue(dim === 0 ? 1 : ((100 / 255) * dim!));
+            .updateValue(dim);
         }
       } else {
         existingAccessory.getService(this.Service.Switch)
