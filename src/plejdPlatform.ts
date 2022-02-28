@@ -28,7 +28,7 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
       devs[i].uuid = this.generateId(devs[i].identifier.toString());
     }
 
-    const cryptoKey = Buffer.from(config['crypto_key'].replace(/-/g, ''), 'hex');
+    const cryptoKey = Buffer.from((config['crypto_key'] ?? config['key']).replace(/-/g, ''), 'hex');
     this.userInputConfig = {
       devices: devs,
       cryptoKey: cryptoKey,
