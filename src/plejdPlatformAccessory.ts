@@ -72,12 +72,10 @@ export class PlejdPlatformAccessory {
   async setOn(value: CharacteristicValue) {
     const oldVal = this.state.isOn;
     const newVal = value as boolean;
-    if(oldVal !== newVal) {
-      this.state.isOn = newVal;
-      this.updateStoredStateCache();
-      this.platform.log.info(`Updating state | ${this.device.name} | to ${ newVal ? 'On' : 'off'} | from ${ oldVal ? 'On' : 'Off'}`);
-      this.platform.plejdService.updateState(this.device.identifier, newVal, null);
-    }
+    this.state.isOn = newVal;
+    this.updateStoredStateCache();
+    this.platform.log.info(`Updating state | ${this.device.name} | to ${ newVal ? 'On' : 'off'} | from ${ oldVal ? 'On' : 'Off'}`);
+    this.platform.plejdService.updateState(this.device.identifier, newVal, null);
   }
 
   async getOn(): Promise<CharacteristicValue> {
@@ -89,12 +87,10 @@ export class PlejdPlatformAccessory {
   async setBrightness(value: CharacteristicValue) {
     const oldValue = this.state.brightness;
     const newVal = value as number; // Number between 1-100
-    if (oldValue !== newVal) {
-      this.state.brightness = newVal;
-      this.updateStoredStateCache();
-      this.platform.log.info(`Updating brightness | ${this.device.name} | to ${ newVal } | from ${oldValue}`);
-      this.platform.plejdService.updateState(this.device.identifier, this.state.isOn, newVal);
-    }
+    this.state.brightness = newVal;
+    this.updateStoredStateCache();
+    this.platform.log.info(`Updating brightness | ${this.device.name} | to ${ newVal } | from ${oldValue}`);
+    this.platform.plejdService.updateState(this.device.identifier, this.state.isOn, newVal);
   }
 
   async getBrightness(): Promise<CharacteristicValue> {

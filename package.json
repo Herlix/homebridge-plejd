@@ -3,7 +3,7 @@
   "displayName": "Plejd",
   "name": "homebridge-plejd",
   "author": "Alexander Herlin",
-  "version": "1.1.6",
+  "version": "1.1.7",
   "description": "HomeKit support for the Plejd BLE platform using Homebridge",
   "license": "MIT",
   "repository": {
