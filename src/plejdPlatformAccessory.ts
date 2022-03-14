@@ -109,7 +109,6 @@ export class PlejdPlatformAccessory {
   }
 
   getStoredStateCache(): DeviceState {
-    const file = readFileSync(this.cachePath, 'utf-8');
-    return file ? JSON.parse(file) : { brightness: 100, isOn: false };
+    return existsSync(this.cachePath) ? JSON.parse(readFileSync(this.cachePath, 'utf-8')) : { brightness: 100, isOn: false };
   }
 }
