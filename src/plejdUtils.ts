@@ -1,15 +1,15 @@
 import { createCipheriv, createHash } from 'crypto';
 
-export function plejdChalResp(key, chal) {
+export const plejdChalResp = (key, chal) => {
   const intermediate = createHash('sha256').update(xor(key, chal)).digest();
 
   const part1 = intermediate.slice(0, 16);
   const part2 = intermediate.slice(16);
 
   return xor(part1, part2);
-}
+};
 
-export function plejdEncodeDecode(key: Buffer, addressBuffer: Buffer, data: Buffer): Buffer {
+export const plejdEncodeDecode = (key: Buffer, addressBuffer: Buffer, data: Buffer): Buffer => {
   const buf = Buffer.concat([addressBuffer, addressBuffer, addressBuffer.subarray(0, 4)]);
   const cipher = createCipheriv('aes-128-ecb', key, '');
   cipher.setAutoPadding(false);
@@ -24,9 +24,9 @@ export function plejdEncodeDecode(key: Buffer, addressBuffer: Buffer, data: Buff
   }
 
   return Buffer.from(output, 'ascii');
-}
+};
 
-export function reverseBuffer(src: Buffer): Buffer {
+export const reverseBuffer = (src: Buffer): Buffer => {
   const buffer = Buffer.allocUnsafe(src.length);
 
   for (let i = 0, j = src.length - 1; i <= j; ++i, --j) {
@@ -35,12 +35,12 @@ export function reverseBuffer(src: Buffer): Buffer {
   }
 
   return buffer;
-}
+};
 
-function xor(first: Buffer, second: Buffer): Buffer {
+const xor = (first: Buffer, second: Buffer): Buffer => {
   const result = Buffer.alloc(first.length);
   for (let i = 0; i < first.length; i++) {
     result[i] = first[i] ^ second[i];
   }
   return result;
-}
+};

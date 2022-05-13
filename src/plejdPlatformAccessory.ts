@@ -29,15 +29,14 @@ export class PlejdPlatformAccessory {
     platform.log.debug(`Adding handler for a ${this.device.model} with id ${this.device.identifier}`);
 
     const dirPath = join(platform.api.user.storagePath(), 'plugin-persist', 'plejd-cache');
-    if(!existsSync(dirPath)) {
-      mkdir(dirPath, {recursive: true}, (err) => {
+    if (!existsSync(dirPath)) {
+      mkdir(dirPath, { recursive: true }, (err) => {
         if (err) {
           this.platform.log.warn('Unable to create storage path |', err);
         }
       });
     }
     this.cachePath = join(dirPath, `${device.identifier}.json`);
-
 
     this.state = this.getStoredStateCache();
     this.updateStoredStateCache();
@@ -58,7 +57,7 @@ export class PlejdPlatformAccessory {
         .onSet(this.setBrightness.bind(this));
     } else {
       this.service = this.accessory.getService(this.platform.Service.Switch) ||
-       this.accessory.addService(this.platform.Service.Switch);
+        this.accessory.addService(this.platform.Service.Switch);
     }
 
     // register handlers for the On/Off Characteristic
@@ -69,36 +68,36 @@ export class PlejdPlatformAccessory {
     this.service.setCharacteristic(this.platform.Characteristic.Name, this.device.name);
   }
 
-  async setOn(value: CharacteristicValue) {
+  setOn = async (value: CharacteristicValue) => {
     const oldVal = this.state.isOn;
     const newVal = value as boolean;
     this.state.isOn = newVal;
     this.updateStoredStateCache();
-    this.platform.log.info(`Updating state | ${this.device.name} | to ${ newVal ? 'On' : 'off'} | from ${ oldVal ? 'On' : 'Off'}`);
+    this.platform.log.info(`Updating state | ${this.device.name} | to ${newVal ? 'On' : 'off'} | from ${oldVal ? 'On' : 'Off'}`);
     this.platform.plejdService.updateState(this.device.identifier, newVal, null);
-  }
+  };
 
-  async getOn(): Promise<CharacteristicValue> {
+  getOn = async (): Promise<CharacteristicValue> => {
     this.platform.log.debug('Get Characteristic On', this.device.name, this.state.isOn);
-    // this.platform.plejdService.getState(this.device.identifier);
     return this.state.isOn;
-  }
+  };
 
-  async setBrightness(value: CharacteristicValue) {
+  setBrightness = async (value: CharacteristicValue) => {
     const oldValue = this.state.brightness;
     const newVal = value as number; // Number between 1-100
     this.state.brightness = newVal;
     this.updateStoredStateCache();
-    this.platform.log.info(`Updating brightness | ${this.device.name} | to ${ newVal } | from ${oldValue}`);
+    this.platform.log.debug(`Updating brightness | ${this.device.name} | to ${newVal} | from ${oldValue}`);
     this.platform.plejdService.updateState(this.device.identifier, this.state.isOn, newVal);
-  }
+  };
 
-  async getBrightness(): Promise<CharacteristicValue> {
+  getBrightness = async (): Promise<CharacteristicValue> => {
     this.platform.log.debug('Get Characteristic Brightness', this.device.name, this.state.brightness);
     return this.state.brightness;
-  }
+  };
 
-  updateStoredStateCache() {
+  updateStoredStateCache = () => {
+    this.platform.log.debug('Updating plejd stored state');
     if (this.state) {
       writeFile(this.cachePath, JSON.stringify(this.state), 'utf-8', (err) => {
         if (err) {
@@ -106,9 +105,9 @@ export class PlejdPlatformAccessory {
         }
       });
     }
-  }
+  };
 
-  getStoredStateCache(): DeviceState {
+  getStoredStateCache = (): DeviceState => {
     return existsSync(this.cachePath) ? JSON.parse(readFileSync(this.cachePath, 'utf-8')) : { brightness: 100, isOn: false };
-  }
+  };
 }

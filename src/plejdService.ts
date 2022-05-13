@@ -12,6 +12,7 @@ const NOBLE_IS_POWER_ON = 'poweredOn';
  */
 enum PlejdCharacteristics {
   Service = '31ba000160854726be45040c957391b5',
+  LightLevel = '31ba000360854726be45040c957391b5',
   Data = '31ba000460854726be45040c957391b5',
   LastData = '31ba000560854726be45040c957391b5',
   Auth = '31ba000960854726be45040c957391b5',
@@ -19,25 +20,30 @@ enum PlejdCharacteristics {
 }
 
 enum PlejdCommand {
-  StateOnOff = '0097',
+  UpdateState = '0097',
   StateDim = '00c8',
   Dim = '0098', // 0-255
   Time = '001b',
   Scene = '0021',
   RequestResponse = '0102',
   RequestNoResponse = '0110',
-  RequestReadValue = '0103'
+  RequestReadValue = '0103',
+  ButtonClick = '1006'
 }
 
 export class PlejdService {
   private connectedPeripheral: noble.Peripheral | null;
+  private addressBuffer: Buffer | null;
+  private dataCharacteristic: noble.Characteristic | null;
   private pingIndex!: NodeJS.Timer;
 
   constructor(
-        private readonly config: UserInputConfig,
-        public readonly log: Logger,
-        private readonly onUpdate: (identifier: number, isOn: boolean, dim?: number) => void) {
+    private readonly config: UserInputConfig,
+    public readonly log: Logger,
+    private readonly onUpdate: (identifier: number, isOn: boolean, dim?: number) => void) {
 
+    this.addressBuffer = null;
+    this.dataCharacteristic = null;
     this.connectedPeripheral = null;
 
     noble.on('stateChange', (state) => this.stateChange(state));
@@ -45,16 +51,14 @@ export class PlejdService {
   }
 
   /// Brightness should be between 1-100
-  updateState(identifier: number, isOn: boolean, brightness: number | null) {
-    const char = this.dataCharacteristic();
-    const addr = this.addressBuffer();
-    if (!char || !addr) {
-      this.log.warn(`UpdateState | characteristic (${char}) or address (${addr}) not found`);
+  updateState = (identifier: number, isOn: boolean, brightness: number | null) => {
+    if (!this.dataCharacteristic || !this.addressBuffer) {
+      this.log.warn(`UpdateState | characteristic (${this.dataCharacteristic}) or address (${this.addressBuffer}) not found`);
       return;
     }
 
     const dimming = brightness !== null;
-    const command = (isOn && dimming) ? PlejdCommand.Dim : PlejdCommand.StateOnOff;
+    const command = (isOn && dimming) ? PlejdCommand.Dim : PlejdCommand.UpdateState;
     const on = isOn ? '01' : '00';
 
     let payload = Buffer.from((identifier).toString(16).padStart(2, '0') + PlejdCommand.RequestNoResponse + command + on, 'hex');
@@ -65,55 +69,29 @@ export class PlejdService {
       payload = Buffer.concat([payload, Buffer.from(dim.toString(16).padStart(4, '0'), 'hex')]);
     }
 
-    const data = plejdEncodeDecode(this.config.cryptoKey, addr, payload);
-    this.plejdWrite(char, data);
-  }
-
-  /// WIP, does not work.
-  getState(identifier: number) {
-    const char = this.dataCharacteristic();
-    const addr = this.addressBuffer();
-    if (!char || !addr) {
-      this.log.warn(`GetState | characteristic (${char}) or address (${addr}) not found`);
-      return;
-    }
-
-    const payload = Buffer.from((identifier)
-      .toString(16)
-      .padStart(2, '0') + PlejdCommand.RequestResponse + PlejdCommand.StateOnOff, 'hex');
-
-    const data = plejdEncodeDecode(this.config.cryptoKey, addr, payload);
-    this.plejdWrite(char, data);
-
-    char.read((err: string, data: Buffer) => {
-
-      const decodedData = plejdEncodeDecode(this.config.cryptoKey, addr, data);
-      const id = parseInt(decodedData[0].toString(), 10);
-      const command = decodedData.toString('hex', 3, 5);
-      const isOn = parseInt(decodedData.toString('hex', 5, 6), 10) === 1;
-
-      this.log.debug(`getState | id: ${id} | command: ${command} | arg: ${isOn} | err ${err}`);
-    });
-  }
+    this.log.debug('UpdateState:', this.config.cryptoKey, this.addressBuffer, payload);
+    const data = plejdEncodeDecode(this.config.cryptoKey, this.addressBuffer, payload);
+    this.plejdWrite(this.dataCharacteristic, data);
+  };
 
   //   -------------- Private -------------- \\
-  private stateChange(state: string) {
+  private stateChange = (state: string) => {
     if (state !== NOBLE_IS_POWER_ON) {
       this.log.debug('stateChange | Stopped | ' + state);
       noble.stopScanning();
     }
     this.log.debug('stateChange | Started | ' + state);
     this.startConnection();
-  }
+  };
 
-  private startConnection() {
+  private startConnection = () => {
     if (noble.state === NOBLE_IS_POWER_ON) {
       noble.startScanning([PlejdCharacteristics.Service], false);
       noble.once('discover', (peripheral) => this.discover(peripheral));
     }
-  }
+  };
 
-  private discover(peripheral: noble.Peripheral) {
+  private discover = (peripheral: noble.Peripheral) => {
     this.log.info(`Discovered | ${peripheral.advertisement.localName} | addr: ${peripheral.address} | RSSI: ${peripheral.rssi} dB`);
 
     noble.stopScanning();
@@ -121,16 +99,19 @@ export class PlejdService {
     peripheral.connect((error) => {
       if (error) {
         this.log.error(`Connecting failed | ${peripheral.advertisement.localName} | addr: ${peripheral.address}) - err: ${error}`);
+        // TODO, restart discover
         return;
       }
       this.connectToPeripheral(peripheral);
     });
-  }
+  };
 
-  private connectToPeripheral(peripheral: noble.Peripheral) {
+  private connectToPeripheral = (peripheral: noble.Peripheral) => {
     this.log.info(`Connected | ${peripheral.advertisement.localName} (addr: ${peripheral.address})`);
 
     this.connectedPeripheral = peripheral;
+    this.addressBuffer = reverseBuffer(Buffer.from(String(peripheral.address).replace(/:/g, ''), 'hex'));
+
 
     const services = [PlejdCharacteristics.Service];
     const characteristics = [
@@ -148,20 +129,25 @@ export class PlejdService {
       this.discovered(peripheral, services, characteristics);
     });
 
-    this.log.debug('Connected | Peripheral |', peripheral);
+    // this.log.debug('Connected | Peripheral |', peripheral);
 
     peripheral.once('disconnect', () => {
       this.log.info('Peripheral disconnected');
+      this.addressBuffer = null;
+      this.dataCharacteristic = null;
       this.connectedPeripheral = null;
-    });
-  }
 
-  private discovered(peripheral: noble.Peripheral, services: noble.Service[], characteristics: noble.Characteristic[]) {
+      peripheral.connectAsync();
+    });
+  };
+
+  private discovered = (peripheral: noble.Peripheral, services: noble.Service[], characteristics: noble.Characteristic[]) => {
     const authChar = characteristics.find((char) => char.uuid === PlejdCharacteristics.Auth);
     const lastDataChar = characteristics.find((char) => char.uuid === PlejdCharacteristics.LastData);
     const pingChar = characteristics.find((char) => char.uuid === PlejdCharacteristics.Ping);
+    this.dataCharacteristic = peripheral?.services[0]?.characteristics?.find((char) => char.uuid === PlejdCharacteristics.Data) ?? null;
 
-    if(!authChar || !lastDataChar || !pingChar) {
+    if (!authChar || !lastDataChar || !pingChar) {
       this.log.error('Unable to extract characteristic during discovery', authChar, lastDataChar, pingChar);
       return;
     }
@@ -178,9 +164,9 @@ export class PlejdService {
         lastDataChar.on('data', (data, isNotification) => this.gotData(data, isNotification));
       });
     });
-  }
+  };
 
-  private plejdAuth(authChar: noble.Characteristic, callback: () => void) {
+  private plejdAuth = (authChar: noble.Characteristic, callback: () => void) => {
     authChar.write(Buffer.from([0x00]), false, (error: string) => {
       if (error) {
         this.log.error('Error writing auth start | ' + error);
@@ -205,9 +191,9 @@ export class PlejdService {
       });
 
     });
-  }
+  };
 
-  private startPlejdPing(pingChar) {
+  private startPlejdPing = (pingChar) => {
     clearInterval(this.pingIndex);
     this.pingIndex = setInterval(() => {
       if (this.connectedPeripheral) {
@@ -224,9 +210,9 @@ export class PlejdService {
         });
       }
     }, 1000 * 60 * 3);
-  }
+  };
 
-  private plejdPing(pingChar: noble.Characteristic, callback: (boolean) => void) {
+  private plejdPing = (pingChar: noble.Characteristic, callback: (boolean) => void) => {
     const ping = randomBytes(1);
 
     pingChar.write(ping, false, (error) => {
@@ -250,9 +236,9 @@ export class PlejdService {
         }
       });
     });
-  }
+  };
 
-  private disconnect(callback: () => void) {
+  private disconnect = (callback: () => void) => {
     if (!this.pingIndex) {
       return;
     }
@@ -262,6 +248,8 @@ export class PlejdService {
       this.log.info('Disconnecting peripheral');
 
       this.connectedPeripheral.disconnect(() => {
+        this.addressBuffer = null;
+        this.dataCharacteristic = null;
         this.connectedPeripheral = null;
         if (callback) {
           callback();
@@ -273,21 +261,24 @@ export class PlejdService {
     if (callback) {
       callback();
     }
-  }
+  };
 
-  private gotData(data: Buffer, isNotification: boolean) {
-    const addr = this.addressBuffer();
-    if (!addr) {
+  private gotData = (data: Buffer, isNotification: boolean) => {
+    if (!this.addressBuffer || this.addressBuffer?.byteLength === 0) {
       this.log.warn('Got data but address in unknown');
       return;
     }
-
-    const decodedData = plejdEncodeDecode(this.config.cryptoKey, addr, data);
+    this.log.debug('GotData:', this.config.cryptoKey, this.addressBuffer, data);
+    const decodedData = plejdEncodeDecode(this.config.cryptoKey, this.addressBuffer, data);
     const id = parseInt(decodedData[0].toString(), 10);
     const command = decodedData.toString('hex', 3, 5);
+
     const isOn = parseInt(decodedData.toString('hex', 5, 6), 10) === 1;
 
-    this.log.debug(`GotData | id: ${id} | command: ${command} | arg: ${isOn} | isNotification: ${isNotification}`);
+    const commandType = Object.values(PlejdCommand).find(x => x.toString() === command) ?? 'Unknown';
+    // eslint-disable-next-line max-len
+    this.log.debug(`GotData | id: ${id} | Command: ${command} - ${commandType} | On: ${isOn} | Notification: ${isNotification} | payload: ${decodedData.toString('hex')}`);
+
     switch (command) {
       case PlejdCommand.Time: {
         const arg = parseInt(reverseBuffer(decodedData.slice(5, 9)).toString('hex'), 16);
@@ -309,32 +300,27 @@ export class PlejdService {
         this.onUpdate(id, isOn, converted);
         break;
       }
-      case PlejdCommand.StateOnOff: {
+      case PlejdCommand.UpdateState: {
+        this.onUpdate(id, isOn);
+        break;
+      }
+      case PlejdCommand.ButtonClick: {
         this.onUpdate(id, isOn);
         break;
       }
       default: {
-        this.log.warn(`Unknown command | ${command} | ${id} | ${decodedData.toString('hex')}`);
+        this.log.warn(`Unknown | command: ${command} | id: ${id} | ${decodedData.toString('hex')}`);
         break;
       }
     }
-  }
+  };
 
-  private plejdWrite(dataChar: noble.Characteristic, data: Buffer) {
+  private plejdWrite = (dataChar: noble.Characteristic, data: Buffer) => {
     dataChar.write(data, false, (error) => {
       if (error) {
         this.log.error('Error writing data | ' + error);
         return;
       }
     });
-  }
-
-  private addressBuffer() {
-    return this.connectedPeripheral ?
-      reverseBuffer(Buffer.from(String(this.connectedPeripheral.address).replace(/:/g, ''), 'hex')) : null;
-  }
-
-  private dataCharacteristic(): noble.Characteristic | null {
-    return this.connectedPeripheral?.services[0]?.characteristics?.find((char) => char.uuid === PlejdCharacteristics.Data) ?? null;
-  }
+  };
 }
