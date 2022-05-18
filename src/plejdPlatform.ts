@@ -1,7 +1,7 @@
 import { API, DynamicPlatformPlugin, Logger, PlatformAccessory, PlatformConfig, Service, Characteristic } from 'homebridge';
 
 import { PLATFORM_NAME, PLEJD_LIGHTS, PLUGIN_NAME } from './settings';
-import { PlejdPlatformAccessory } from './plejdPlatformAccessory';
+import { PlejdPlatformAccessoryHandler } from './plejdPlatformAccessory';
 import { Device, UserInputConfig } from './model';
 import { PlejdService } from './plejdService';
 
@@ -10,10 +10,13 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
   public readonly Characteristic: typeof Characteristic = this.api.hap.Characteristic;
   public readonly userInputConfig!: UserInputConfig;
 
+
   public readonly plejdService: PlejdService;
 
   // this is used to track restored cached accessories
   public readonly accessories: PlatformAccessory[] = [];
+
+  public readonly plejdHandlers: PlejdPlatformAccessoryHandler[] = [];
 
   constructor(
     public readonly log: Logger,
@@ -58,20 +61,20 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
     for (const device of this.userInputConfig.devices) {
       const existingAccessory = this.accessories.find(accessory => accessory.UUID === device.uuid);
       if (existingAccessory) {
-        new PlejdPlatformAccessory(this, existingAccessory, device);
+        this.plejdHandlers.push(new PlejdPlatformAccessoryHandler(this, existingAccessory, device));
       } else {
         this.log.info('Adding new accessory |', device.name);
         const accessory = new this.api.platformAccessory(device.name, device.uuid);
         accessory.context.device = device;
         // See above.
-        new PlejdPlatformAccessory(this, accessory, device);
+        this.plejdHandlers.push(new PlejdPlatformAccessoryHandler(this, accessory, device));
         // link the accessory to your platform
         this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
       }
     }
   };
 
-  onPlejdUpdates = (identifier: number, isOn: boolean, dim?: number) => {
+  onPlejdUpdates = (identifier: number, isOn: boolean, brightness?: number) => {
     const uuid = this.userInputConfig.devices.find(d => d.identifier === identifier)?.uuid;
     if (uuid === undefined) {
       this.log.warn(`Got updates on a device with identifier ${identifier} but it is not registered in HB settings`);
@@ -79,8 +82,8 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
     }
     const existingAccessory = this.accessories.find(accessory => accessory.UUID === uuid!);
     const device = this.userInputConfig.devices.find(dev => dev.identifier === identifier);
-    if (existingAccessory && device) {
-
+    const plejdHandler = this.plejdHandlers.find(dev => dev.device.identifier === identifier);
+    if (existingAccessory && device && plejdHandler) {
       if (device.isDimmer) {
         const ser = existingAccessory.getService(this.Service.Lightbulb);
 
@@ -93,11 +96,12 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
         if (!on) {
           this.log.warn('Unable to get Characteristic [On]');
         }
+
         on?.updateValue(isOn);
 
-        if (dim !== undefined) {
+        if (brightness !== undefined) {
           ser?.getCharacteristic(this.Characteristic.Brightness)
-            .updateValue(dim);
+            .updateValue(brightness);
         }
 
       } else {
@@ -105,6 +109,8 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
           ?.getCharacteristic(this.Characteristic.On)
           ?.updateValue(isOn);
       }
+
+      plejdHandler.updateState(isOn, brightness);
     } else {
       this.log.warn('Unable find device associated with update.');
     }

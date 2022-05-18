@@ -21,8 +21,8 @@ enum PlejdCharacteristics {
 
 enum PlejdCommand {
   UpdateState = '0097',
-  StateDim = '00c8',
-  Dim = '0098', // 0-255
+  StateBrightness = '00c8',
+  Brightness = '0098', // 0-255
   Time = '001b',
   Scene = '0021',
   RequestResponse = '0102',
@@ -58,7 +58,7 @@ export class PlejdService {
     }
 
     const dimming = brightness !== null;
-    const command = (isOn && dimming) ? PlejdCommand.Dim : PlejdCommand.UpdateState;
+    const command = (isOn && dimming) ? PlejdCommand.Brightness : PlejdCommand.UpdateState;
     const on = isOn ? '01' : '00';
 
     let payload = Buffer.from((identifier).toString(16).padStart(2, '0') + PlejdCommand.RequestNoResponse + command + on, 'hex');
@@ -128,8 +128,6 @@ export class PlejdService {
 
       this.discovered(peripheral, services, characteristics);
     });
-
-    // this.log.debug('Connected | Peripheral |', peripheral);
 
     peripheral.once('disconnect', () => {
       this.log.info('Peripheral disconnected');
@@ -290,13 +288,12 @@ export class PlejdService {
         this.log.debug('Trigger scene: ' + isOn);
         break;
       }
-      case PlejdCommand.Dim:
-      case PlejdCommand.StateDim: {
+      case PlejdCommand.Brightness:
+      case PlejdCommand.StateBrightness: {
         const dim = parseInt(decodedData.toString('hex', 7, 8), 16);
 
         // Convert to Homebridge 1-100
         const converted = dim === 0 ? 1 : ((100 / 255) * dim);
-        this.log.debug(`Dim value sent to HB ${converted}`);
         this.onUpdate(id, isOn, converted);
         break;
       }

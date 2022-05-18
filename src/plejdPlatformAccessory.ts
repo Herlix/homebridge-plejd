@@ -1,6 +1,4 @@
-import { existsSync, mkdir, readFileSync, writeFile } from 'fs';
 import { Service, PlatformAccessory, CharacteristicValue } from 'homebridge';
-import { join } from 'path';
 import { Device } from './model';
 
 import { PlejdPlatform } from './plejdPlatform';
@@ -16,30 +14,21 @@ interface DeviceState {
  * An instance of this class is created for each accessory your platform registers
  * Each accessory may expose multiple services of different service types.
  */
-export class PlejdPlatformAccessory {
+export class PlejdPlatformAccessoryHandler {
   private service: Service;
   private state: DeviceState;
-  private cachePath: string;
 
   constructor(
     private readonly platform: PlejdPlatform,
     private readonly accessory: PlatformAccessory,
-    private readonly device: Device,
+    public readonly device: Device,
   ) {
     platform.log.debug(`Adding handler for a ${this.device.model} with id ${this.device.identifier}`);
 
-    const dirPath = join(platform.api.user.storagePath(), 'plugin-persist', 'plejd-cache');
-    if (!existsSync(dirPath)) {
-      mkdir(dirPath, { recursive: true }, (err) => {
-        if (err) {
-          this.platform.log.warn('Unable to create storage path |', err);
-        }
-      });
-    }
-    this.cachePath = join(dirPath, `${device.identifier}.json`);
-
-    this.state = this.getStoredStateCache();
-    this.updateStoredStateCache();
+    this.state = {
+      brightness: accessory.context.brightness,
+      isOn: accessory.context.isOn,
+    };
 
     // set accessory information
     this.accessory.getService(this.platform.Service.AccessoryInformation)!
@@ -68,46 +57,44 @@ export class PlejdPlatformAccessory {
     this.service.setCharacteristic(this.platform.Characteristic.Name, this.device.name);
   }
 
-  setOn = async (value: CharacteristicValue) => {
-    const oldVal = this.state.isOn;
+  updateState = (isOn: boolean, brightness?: number) => {
+    this.state.isOn = isOn;
+    this.platform.log.debug('updateState | Sending isOn', isOn);
+    this.service.getCharacteristic(this.platform.Characteristic.On)
+      .updateValue(isOn);
+
+    if (brightness) {
+      this.state.brightness = Math.round(brightness);
+      this.platform.log.debug('update state | Sending brightness', this.state.brightness);
+      this.service.getCharacteristic(this.platform.Characteristic.Brightness)
+        .updateValue(this.state.brightness);
+    }
+
+    this.accessory.context = this.state;
+    this.platform.log.debug(`State updated | ${JSON.stringify(this.state)}`);
+  };
+
+  private setOn = async (value: CharacteristicValue) => {
     const newVal = value as boolean;
-    this.state.isOn = newVal;
-    this.updateStoredStateCache();
-    this.platform.log.info(`Updating state | ${this.device.name} | to ${newVal ? 'On' : 'off'} | from ${oldVal ? 'On' : 'Off'}`);
+    this.platform.log.info(`Updating state | ${this.device.name} | to ${newVal ? 'On' : 'off'} | from ${this.state.isOn ? 'On' : 'Off'}`);
+    this.updateState(newVal, this.state.brightness);
     this.platform.plejdService.updateState(this.device.identifier, newVal, null);
   };
 
-  getOn = async (): Promise<CharacteristicValue> => {
+  private getOn = async (): Promise<CharacteristicValue> => {
     this.platform.log.debug('Get Characteristic On', this.device.name, this.state.isOn);
     return this.state.isOn;
   };
 
-  setBrightness = async (value: CharacteristicValue) => {
-    const oldValue = this.state.brightness;
+  private setBrightness = async (value: CharacteristicValue) => {
     const newVal = value as number; // Number between 1-100
-    this.state.brightness = newVal;
-    this.updateStoredStateCache();
-    this.platform.log.debug(`Updating brightness | ${this.device.name} | to ${newVal} | from ${oldValue}`);
+    this.platform.log.debug(`Updating brightness | ${this.device.name} | to ${newVal} | from ${this.state.brightness}`);
+    this.updateState(this.state.isOn, newVal);
     this.platform.plejdService.updateState(this.device.identifier, this.state.isOn, newVal);
   };
 
-  getBrightness = async (): Promise<CharacteristicValue> => {
+  private getBrightness = async (): Promise<CharacteristicValue> => {
     this.platform.log.debug('Get Characteristic Brightness', this.device.name, this.state.brightness);
     return this.state.brightness;
-  };
-
-  updateStoredStateCache = () => {
-    this.platform.log.debug('Updating plejd stored state');
-    if (this.state) {
-      writeFile(this.cachePath, JSON.stringify(this.state), 'utf-8', (err) => {
-        if (err) {
-          this.platform.log.warn('Unable to write cache file.');
-        }
-      });
-    }
-  };
-
-  getStoredStateCache = (): DeviceState => {
-    return existsSync(this.cachePath) ? JSON.parse(readFileSync(this.cachePath, 'utf-8')) : { brightness: 100, isOn: false };
   };
 }
