@@ -26,8 +26,8 @@ export class PlejdPlatformAccessoryHandler {
     platform.log.debug(`Adding handler for a ${this.device.model} with id ${this.device.identifier}`);
 
     this.state = {
-      brightness: accessory.context.brightness,
-      isOn: accessory.context.isOn,
+      brightness: accessory.context.brightness ?? 100,
+      isOn: accessory.context.isOn ?? false,
     };
 
     // set accessory information
