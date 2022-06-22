@@ -28,14 +28,11 @@ Check out ble lib [@abandonware/Noble](https://github.com/abandonware/noble) for
 
 <br/>
 
-## TODO: Extract crypto key
+### Settings
+To be able to communicate with Plejd you need the Crypto key. This is the hard part of getting up and running. A guide can be found [here](./docs/Extracting%20crypto%20key.md)!
 
-For now look for guides online. Backup your phone unencrypted. Download an extractor and look for a .site file within plejd. 
-
-```com.plejd.consumer.light ... .site .... .PlejdMesh.CryptoKey ```
-
-<br />
+Besides the crypto key you will have to add your devices. The info can be extracted alongside the crypto key extraction but it's a bit overkill if you have the key and need device info. Checkout this guide on how to get [this](./docs/Device%20Info.md) info from the app.
 
 ## Thanks
 
-Big thanks to [@blommegard](https://github.com/blommegard) (https://github.com/blommegard/homebridge-plejd) for the base of this repo
+Big thanks to [@blommegard](https://github.com/blommegard) with [this](https://github.com/blommegard/homebridge-plejd) project. As well as [@klali](https://github.com/klali) with [this](https://github.com/klali/ha-plejd) project.

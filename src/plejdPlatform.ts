@@ -112,7 +112,7 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
 
       plejdHandler.updateState(isOn, brightness);
     } else {
-      this.log.warn('Unable find device associated with update.');
+      this.log.warn('Unable find device associated with update |', existingAccessory, device, plejdHandler);
     }
   };
 
