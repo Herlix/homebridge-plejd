@@ -71,7 +71,9 @@ export class PlejdService {
 
     this.log.debug('UpdateState:', this.config.cryptoKey, this.addressBuffer, payload);
     const data = plejdEncodeDecode(this.config.cryptoKey, this.addressBuffer, payload);
-    this.plejdWrite(this.dataCharacteristic, data);
+    if (this.dataCharacteristic) {
+      this.plejdWrite(this.dataCharacteristic, data);
+    }
   };
 
   //   -------------- Private -------------- \\
@@ -85,9 +87,19 @@ export class PlejdService {
   };
 
   private startConnection = () => {
-    if (noble.state === NOBLE_IS_POWER_ON) {
-      noble.startScanning([PlejdCharacteristics.Service], false);
+    if (this.connectedPeripheral === null || noble.state === 'disconnected') {
+      noble.startScanning([PlejdCharacteristics.Service], false, (e) => {
+        if (e) {
+          this.log.error('Unable to start scanning', e);
+        }
+      });
       noble.once('discover', (peripheral) => this.discover(peripheral));
+
+    } else {
+      this.connectedPeripheral?.cancelConnect();
+      this.connectedPeripheral.connect((e) => {
+        this.log.error('Unable to reconnect', e);
+      });
     }
   };
 
@@ -99,7 +111,7 @@ export class PlejdService {
     peripheral.connect((error) => {
       if (error) {
         this.log.error(`Connecting failed | ${peripheral.advertisement.localName} | addr: ${peripheral.address}) - err: ${error}`);
-        // TODO, restart discover
+        this.startConnection();
         return;
       }
       this.connectToPeripheral(peripheral);
@@ -201,10 +213,6 @@ export class PlejdService {
             });
           }
         });
-      } else {
-        this.disconnect(() => {
-          this.startConnection();
-        });
       }
     }, 1000 * 60 * 3);
   };
@@ -243,16 +251,7 @@ export class PlejdService {
 
     if (this.connectedPeripheral) {
       this.log.info('Disconnecting peripheral');
-
-      this.connectedPeripheral.disconnect(() => {
-        this.addressBuffer = null;
-        this.dataCharacteristic = null;
-        this.connectedPeripheral = null;
-        if (callback) {
-          callback();
-          return;
-        }
-      });
+      this.connectedPeripheral.disconnect();
     }
 
     if (callback) {
