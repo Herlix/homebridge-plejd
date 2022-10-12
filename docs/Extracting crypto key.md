@@ -1,4 +1,10 @@
-## Extract crypto key
+## Extract crypto key 
+
+This parts means digging into often encrypted information in a file on your phone. This is done through making a local un-encrypted backup onto you computer no matter operative system, after that you need to somehow get to the information.
+
+The information is mostly based on [this](https://github.com/klali/ha-plejd) project.
+
+I've composed a [shell script](./../extractToken.sh) for doing the tasks listed here, feel free to have a look.
 
 ### Steps for Android on MacOs/Linux:
 
