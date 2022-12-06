@@ -143,10 +143,6 @@ export class PlejdService {
 
     peripheral.once('disconnect', () => {
       this.log.info('Peripheral disconnected');
-
-      peripheral.connect((msg) => {
-        this.log.info('Peripheral unable to reconnected', msg);
-      });
     });
   };
 
@@ -207,7 +203,7 @@ export class PlejdService {
     this.pingIndex = setInterval(() => {
       if (this.connectedPeripheral) {
         this.plejdPing(pingChar, (pingOk) => {
-          if (pingOk === false) {
+          if (!pingOk) {
             this.disconnect(() => {
               this.startConnection();
             });

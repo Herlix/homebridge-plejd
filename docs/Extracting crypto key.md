@@ -23,18 +23,63 @@ Recover the .site file:
 $ cp apps/com.plejd.plejdapp/f/*/*.site site.json
 ```
 
-### Steps for iOS on MacOs:
+### Steps for iOS:
 
+
+One free alternative is to use [this](https://github.com/richinfante/iphonebackuptools) npm package.
+
+There's some information on how to use it. This means using the terminal. 
+
+There might be other alternatives out there.
+
+### Using NPM & JQ
 Connect you iPhone to your computer and make a backup 
 
-*Steps: finder -> locations -> [phone] -> un-tick 'Encrypt local backup' -> Back up now*
+Mac: *Steps: finder -> locations -> [phone] -> un-tick 'Encrypt local backup' -> Back up now*
 
-```bash
-./plejd.sh
+```bash 
+# on mac you need to use sudo.
+npm i -g ibackuptool
 ```
 
-All the info will be printed in the terminal for you.
+Mac: *System preferences -> Security & Privacy -> Privacy -> tick Full disk access for terminal*
+```bash
+#!/bin/bash
+PREFIX=`npm config get prefix`
+NODE_IBACKUP_DIR=$PREFIX/lib/node_modules/ibackuptool
 
-Requirements: ```node``` & ```jq```
+sudo find $NODE_IBACKUP_DIR/**/*js -exec sudo dos2unix {} \;
+```
+
+Run the extraction:
+```bash
+ibackuptool -l -f json > temp.json
+````
+This output can be read using any editor, search for ```.PlejdMesh.CryptoKey```
+
+
+If you'd want to automate it a bit more using jq: 
+
+```
+#!/bin/bash
+# ----> Run the ibackup tool and put all information into a raw json variable
+RAW=$(ibackuptool -l -f json)
+
+# ----> Get the fields needed
+UUID=$(echo ${RAW} | sed 's/run backups.list //' | jq '.[0].udid' | sed 's/"//g')
+
+# ----> Extract the actual needed data into a temp dir
+mkdir temp
+Q=$(sudo ibackuptool -b ${UUID} -r backup.files --extract ./temp --regex-filter '\.(site)$')
+mv temp/App/com.plejd.consumer.light/Documents/**/*.site ./temp/site.json
+
+# ----> List the data and remove the temp dir
+cat ./temp/site.json | jq '.PlejdMesh.CryptoKey' | sed 's/-//g' | sed 's/"//g'
+cat ./temp/site.json | jq '.PlejdMesh._outputAddresses' | grep -v '\$type' | jq '.[][]' 
+rm -rf temp
+````
+
+Mac: *System preferences -> Security & Privacy -> Privacy -> un-tick Full disk access for terminal*
+
 <br />
 

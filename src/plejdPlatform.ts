@@ -25,13 +25,32 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
   ) {
     this.log.debug('Finished initializing platform:', this.config.platform);
     // Update this to have it computed.
-    const devices = config['devices'] as Device[];
-    for (let i = 0; i < devices.length; i++) {
-      devices[i].isDimmer = PLEJD_LIGHTS.includes((devices[i].model));
-      devices[i].uuid = this.generateId(devices[i].identifier.toString());
+
+    if (!config.devices) {
+      log.warn('No devices are configured');
     }
 
-    const cryptoKey = Buffer.from((config['crypto_key'] ?? config['key']).replace(/-/g, ''), 'hex');
+    const devices = config.devices as Device[];
+    for (let i = 0; i < devices.length; i++) {
+      if (devices[i].model) {
+        devices[i].isDimmer = PLEJD_LIGHTS.includes((devices[i].model));
+      } else {
+        log.error('Missing device model |', devices[i].name);
+      }
+
+
+      if (devices[i].identifier) {
+        devices[i].uuid = this.generateId(devices[i].identifier.toString());
+      } else {
+        log.error('Missing device identifier |', devices[i].name);
+      }
+    }
+
+    if (!config.crypto_key) {
+      log.error('No Crypto key was found in the configuration. Check the plugin documentation for more info');
+    }
+
+    const cryptoKey = Buffer.from((config.crypto_key).replace(/-/g, ''), 'hex');
     this.userInputConfig = {
       devices: devices,
       cryptoKey: cryptoKey,
