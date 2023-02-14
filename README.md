@@ -30,10 +30,15 @@ Check out ble lib [@abandonware/Noble](https://github.com/abandonware/noble) for
 <br/>
 
 ### Settings
-To be able to communicate with Plejd you need the Crypto key. This is the hard part of getting up and running. A guide can be found [here](./docs/Extracting%20crypto%20key.md)!
+Use Plejd Login information (username, password, site) to let the addon take care of getting token.
 
-Besides the crypto key you will have to add your devices. The info can be extracted alongside the crypto key extraction but it's a bit overkill if you have the key and need device info. Checkout this guide on how to get [this](./docs/Device%20Info.md) info from the app.
+Another alternative is to list the crypto key and devices manually.
 
+If you choose to use both, the devices will be updated according yo what you set them to in the config list.
+
+Check the logs on start up if you'd like to remove the login info after it's been used.
+
+Device info can be found like [this](./docs/Device%20Info.md)!
 ### Notes
 This plugin lacks testing for multiple platforms. Feel free to test on your system. The main dependency [@abandonware/Noble](https://github.com/abandonware/noble) is your guide in case of your separate system. Usually BLE is the problem.
 

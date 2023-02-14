@@ -1,5 +1,5 @@
 import { Service, PlatformAccessory, CharacteristicValue } from 'homebridge';
-import { Device } from './model';
+import { Device } from './model/device';
 
 import { PlejdPlatform } from './plejdPlatform';
 import { PLATFORM_NAME } from './settings';
@@ -78,7 +78,7 @@ export class PlejdPlatformAccessoryHandler {
     const newVal = value as boolean;
     this.platform.log.info(`Updating state | ${this.device.name} | to ${newVal ? 'On' : 'off'} | from ${this.state.isOn ? 'On' : 'Off'}`);
     this.updateState(newVal, this.state.brightness);
-    this.platform.plejdService.updateState(this.device.identifier, newVal, null);
+    this.platform.plejdService?.updateState(this.device.identifier, newVal, null);
   };
 
   private getOn = async (): Promise<CharacteristicValue> => {
@@ -90,7 +90,7 @@ export class PlejdPlatformAccessoryHandler {
     const newVal = value as number; // Number between 1-100
     this.platform.log.debug(`Updating brightness | ${this.device.name} | to ${newVal} | from ${this.state.brightness}`);
     this.updateState(this.state.isOn, newVal);
-    this.platform.plejdService.updateState(this.device.identifier, this.state.isOn, newVal);
+    this.platform.plejdService?.updateState(this.device.identifier, this.state.isOn, newVal);
   };
 
   private getBrightness = async (): Promise<CharacteristicValue> => {

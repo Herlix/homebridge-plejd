@@ -1,5 +1,5 @@
 import { Logger } from 'homebridge';
-import { UserInputConfig } from './model';
+import { UserInputConfig } from './model/userInputConfig';
 import { plejdChalResp as plejdCharResp, plejdEncodeDecode, reverseBuffer } from './plejdUtils';
 
 import { randomBytes } from 'crypto';
@@ -122,6 +122,7 @@ export class PlejdService {
     this.log.info(`Connected | ${peripheral.advertisement.localName} (addr: ${peripheral.address})`);
 
     this.connectedPeripheral = peripheral;
+    this.log.debug('haa', this.connectedPeripheral);
     this.addressBuffer = reverseBuffer(Buffer.from(String(peripheral.address).replace(/:/g, ''), 'hex'));
 
 

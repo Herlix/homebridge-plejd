@@ -1,14 +1,35 @@
 {
   "pluginAlias": "Plejd",
   "pluginType": "platform",
-  "headerDisplay": "Add your crypto key & your Plejd devices",
-  "footerDisplay": "Tip: Plejd app -> Settings -> Devices -> Click on device -> About device",
+  "headerDisplay": "Plejd Setup",
+  "footerDisplay": "Either use your login or add devices and crypto key manually.",
   "singular": true,
   "schema": {
+    "username": {
+      "title": "Your Plejd email",
+      "type": "string",
+      "required": false,
+      "placeholder": "...",
+      "description": "Your Plejd email"
+    },
+    "password": {
+      "title": "Your Plejd password",
+      "type": "string",
+      "required": false,
+      "placeholder": "828291.. or 82-82-91...",
+      "description": "With or without '-' "
+    },
+    "site": {
+      "title": "Site",
+      "type": "string",
+      "required": false,
+      "placeholder": "Home",
+      "description": "Name of your home that you want to control"
+    },
     "crypto_key": {
       "title": "Crypto key",
       "type": "string",
-      "required": true,
+      "required": false,
       "placeholder": "828291.. or 82-82-91...",
       "description": "With or without '-' "
     },

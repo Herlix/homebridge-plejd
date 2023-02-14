@@ -2,16 +2,19 @@ import { API, DynamicPlatformPlugin, Logger, PlatformAccessory, PlatformConfig, 
 
 import { PLATFORM_NAME, PLEJD_LIGHTS, PLUGIN_NAME } from './settings';
 import { PlejdPlatformAccessoryHandler } from './plejdPlatformAccessory';
-import { Device, UserInputConfig } from './model';
+import { UserInputConfig } from './model/userInputConfig';
+import { Device } from './model/device';
 import { PlejdService } from './plejdService';
+import PlejdRemoteApi from './plejdApi';
+import { Site } from './model/plejdSite';
 
 export class PlejdPlatform implements DynamicPlatformPlugin {
   public readonly Service: typeof Service = this.api.hap.Service;
   public readonly Characteristic: typeof Characteristic = this.api.hap.Characteristic;
-  public readonly userInputConfig!: UserInputConfig;
 
 
-  public readonly plejdService: PlejdService;
+  public userInputConfig?: UserInputConfig;
+  public plejdService?: PlejdService;
 
   // this is used to track restored cached accessories
   public readonly accessories: PlatformAccessory[] = [];
@@ -24,13 +27,30 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
     public readonly api: API,
   ) {
     this.log.debug('Finished initializing platform:', this.config.platform);
-    // Update this to have it computed.
 
-    if (!config.devices) {
-      log.warn('No devices are configured');
+    if (this.config.password && this.config.site && this.config.username) {
+      log.info('Using login information to fetch devices & crypto key');
+      log.info('Any devices added manually will update the downloaded devices');
+      const pApi = new PlejdRemoteApi(log, this.config.site, this.config.username, this.config.password, true);
+      pApi.getPlejdRemoteSite()
+        .then(site => this.configureDevices(log, config, site))
+        .catch(e => log.error(`Plejd remote access error: ${e}`));
+    } else if (this.config.crypto_key && this.config.devices && this.config.devices.count > 0) {
+      log.info('Using supplied crypto key & devices');
+      this.configureDevices(log, config, undefined);
+    } else {
+      log.warn('No settings are prepared, either supply crypto key & devices OR username, password & site');
+    }
+  }
+
+  configureDevices = (log: Logger, config: PlatformConfig, site?: Site) => {
+    const devices = config.devices as Device[];
+
+    if (site) {
+      config.crypto_key = site.plejdMesh.cryptoKey;
+      // Extract devices
     }
 
-    const devices = config.devices as Device[];
     for (let i = 0; i < devices.length; i++) {
       if (devices[i].model) {
         devices[i].isDimmer = PLEJD_LIGHTS.includes((devices[i].model));
@@ -59,7 +79,7 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
     this.plejdService = new PlejdService(this.userInputConfig, log, this.onPlejdUpdates.bind(this));
 
     this.api.on('didFinishLaunching', () => this.discoverDevices());
-  }
+  };
 
   /**
  * This function is invoked when homebridge restores cached accessories from disk at startup.
@@ -71,13 +91,13 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
   };
 
   discoverDevices = () => {
-    const units = this.userInputConfig.devices.map(x => x.uuid);
+    const units = this.userInputConfig!.devices.map(x => x.uuid);
     const notRegistered = this.accessories.filter(ac => !units.includes(ac.UUID));
     if (notRegistered.length > 0) {
       this.api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, notRegistered);
     }
 
-    for (const device of this.userInputConfig.devices) {
+    for (const device of this.userInputConfig!.devices) {
       const existingAccessory = this.accessories.find(accessory => accessory.UUID === device.uuid);
       if (existingAccessory) {
         this.plejdHandlers.push(new PlejdPlatformAccessoryHandler(this, existingAccessory, device));
@@ -94,13 +114,13 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
   };
 
   onPlejdUpdates = (identifier: number, isOn: boolean, brightness?: number) => {
-    const uuid = this.userInputConfig.devices.find(d => d.identifier === identifier)?.uuid;
+    const uuid = this.userInputConfig!.devices.find(d => d.identifier === identifier)?.uuid;
     if (uuid === undefined) {
       this.log.warn(`Got updates on a device with identifier ${identifier} but it is not registered in HB settings`);
       return;
     }
     const existingAccessory = this.accessories.find(accessory => accessory.UUID === uuid!);
-    const device = this.userInputConfig.devices.find(dev => dev.identifier === identifier);
+    const device = this.userInputConfig!.devices.find(dev => dev.identifier === identifier);
     const plejdHandler = this.plejdHandlers.find(dev => dev.device.identifier === identifier);
     if (existingAccessory && device && plejdHandler) {
       if (device.isDimmer) {
