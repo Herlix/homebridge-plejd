@@ -28,27 +28,66 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
   ) {
     this.log.debug('Finished initializing platform:', this.config.platform);
 
-    if (this.config.password && this.config.site && this.config.username) {
-      log.info('Using login information to fetch devices & crypto key');
-      log.info('Any devices added manually will update the downloaded devices');
-      const pApi = new PlejdRemoteApi(log, this.config.site, this.config.username, this.config.password, true);
-      pApi.getPlejdRemoteSite()
-        .then(site => this.configureDevices(log, config, site))
-        .catch(e => log.error(`Plejd remote access error: ${e}`));
-    } else if (this.config.crypto_key && this.config.devices && this.config.devices.count > 0) {
-      log.info('Using supplied crypto key & devices');
-      this.configureDevices(log, config, undefined);
-    } else {
-      log.warn('No settings are prepared, either supply crypto key & devices OR username, password & site');
-    }
+    api.on('didFinishLaunching', this.configurePlejd);
   }
+
+  configurePlejd = () => {
+    if (this.config.password && this.config.site && this.config.username) {
+      this.log.info('Using login information to fetch devices & crypto key');
+      this.log.info('Any devices added manually will update the downloaded devices');
+
+      const pApi = new PlejdRemoteApi(this.log, this.config.site, this.config.username, this.config.password, true);
+      pApi.getPlejdRemoteSite()
+        .then(site => this.configureDevices(this.log, this.config, site))
+        .catch(e => this.log.error(`Plejd remote access error: ${e}`));
+    } else if (this.config.crypto_key && this.config.devices && this.config.devices.count > 0) {
+      this.log.info('Using supplied crypto key & devices');
+      this.configureDevices(this.log, this.config, undefined);
+    } else {
+      this.log.warn('No settings are prepared, either supply crypto key & devices OR username, password & site');
+    }
+  };
 
   configureDevices = (log: Logger, config: PlatformConfig, site?: Site) => {
     const devices = config.devices as Device[];
 
     if (site) {
       config.crypto_key = site.plejdMesh.cryptoKey;
+      log.info('Plejd Crypto Key:', site.plejdMesh.cryptoKey);
+
+      const items: Device[] = [];
       // Extract devices
+      site.devices.forEach((item) => {
+        const name = item.title;
+        const id = item.deviceId;
+
+        const e = site.plejdDevices.find((x) => x.deviceId === id)!;
+        const dim = e.firmware.notes;
+
+        let identifier = site.inputAddress[id]![0]!;
+        if (dim.endsWith('-02') && items.find((a) => a.identifier === identifier) !== undefined) {
+          identifier += 1;
+        }
+
+        const res: Device = {
+          name: name,
+          model: dim,
+          identifier: identifier,
+          isDimmer: PLEJD_LIGHTS.includes(dim),
+          uuid: this.generateId(identifier.toString()),
+        };
+
+        items.push(res);
+      });
+
+      items.forEach((item) => {
+        const pre = devices.findIndex((x) => x.identifier === item.identifier);
+        if (pre !== -1) {
+          devices[pre].name = item.name;
+        } else {
+          devices.push(item);
+        }
+      });
     }
 
     for (let i = 0; i < devices.length; i++) {
@@ -82,9 +121,9 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
   };
 
   /**
- * This function is invoked when homebridge restores cached accessories from disk at startup.
- * It should be used to setup event handlers for characteristics and update respective values.
- */
+* This function is invoked when homebridge restores cached accessories from disk at startup.
+* It should be used to setup event handlers for characteristics and update respective values.
+*/
   configureAccessory = (accessory: PlatformAccessory) => {
     this.log.info('Loading accessory from cache | ', accessory.displayName);
     this.accessories.push(accessory);

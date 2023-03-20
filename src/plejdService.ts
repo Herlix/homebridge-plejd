@@ -258,7 +258,7 @@ export class PlejdService {
 
   private gotData = (data: Buffer, isNotification: boolean) => {
     if (!this.addressBuffer || this.addressBuffer?.byteLength === 0) {
-      this.log.warn('Got data but address in unknown');
+      this.log.info('Got data but address in unknown, is this a supported platform?');
       return;
     }
     this.log.debug('GotData:', this.config.cryptoKey, this.addressBuffer, data);
@@ -301,7 +301,7 @@ export class PlejdService {
         break;
       }
       default: {
-        this.log.warn(`Unknown | command: ${command} | id: ${id} | ${decodedData.toString('hex')}`);
+        this.log.debug(`Unknown | command: ${command} | id: ${id} | ${decodedData.toString('hex')}`);
         break;
       }
     }
