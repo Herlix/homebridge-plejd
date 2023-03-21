@@ -4,4 +4,5 @@ export interface Device {
   identifier: number;
   isDimmer: boolean;
   uuid: string;
+  room?: string;
 }

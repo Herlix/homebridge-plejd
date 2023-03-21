@@ -85,6 +85,8 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
         const e = site.plejdDevices.find((x) => x.deviceId === id)!;
         const dim = e.firmware.notes;
 
+        const room = site.rooms.find((x) => x.roomId === item.roomId);
+
         let identifier = site.inputAddress[id]![0]!;
         if (
           dim.endsWith('-02') &&
@@ -99,6 +101,7 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
           identifier: identifier,
           isDimmer: PLEJD_LIGHTS.includes(dim),
           uuid: this.generateId(identifier.toString()),
+          room: room?.title,
         };
 
         items.push(res);
@@ -185,7 +188,12 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
           new PlejdPlatformAccessoryHandler(this, existingAccessory, device),
         );
       } else {
-        this.log.info('Adding new accessory |', device.name);
+        let name = device.name;
+        this.log.info('Adding new accessory |', name);
+        if (device.room) {
+          name = device.room + ' - ' + name;
+        }
+
         const accessory = new this.api.platformAccessory(
           device.name,
           device.uuid,
