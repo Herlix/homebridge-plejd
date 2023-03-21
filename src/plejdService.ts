@@ -258,7 +258,7 @@ export class PlejdService {
 
   private gotData = (data: Buffer, isNotification: boolean) => {
     if (!this.addressBuffer || this.addressBuffer?.byteLength === 0) {
-      this.log.info('Got data but address in unknown, is this a supported platform?');
+      this.log.debug('Got data but address in unknown, is this a supported platform?');
       return;
     }
     this.log.debug('GotData:', this.config.cryptoKey, this.addressBuffer, data);

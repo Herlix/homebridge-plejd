@@ -53,8 +53,6 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
 
     if (site) {
       config.crypto_key = site.plejdMesh.cryptoKey;
-      log.info('Plejd Crypto Key:', site.plejdMesh.cryptoKey);
-
       const items: Device[] = [];
       // Extract devices
       site.devices.forEach((item) => {
@@ -114,7 +112,10 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
       devices: devices,
       cryptoKey: cryptoKey,
     };
-    this.log.debug('UserConfig: ', this.userInputConfig);
+
+    log.info('Plejd Crypto Key:', this.userInputConfig.cryptoKey);
+    log.info('Plejd Devices:', this.userInputConfig.devices);
+
     this.plejdService = new PlejdService(this.userInputConfig, log, this.onPlejdUpdates.bind(this));
 
     this.api.on('didFinishLaunching', () => this.discoverDevices());
