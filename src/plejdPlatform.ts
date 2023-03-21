@@ -32,7 +32,7 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
   constructor(
     public readonly log: Logger,
     public readonly config: PlatformConfig,
-    public readonly api: API
+    public readonly api: API,
   ) {
     this.log.debug('Finished initializing platform:', this.config.platform);
 
@@ -43,7 +43,7 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
     if (this.config.password && this.config.site && this.config.username) {
       this.log.info('Using login information to fetch devices & crypto key');
       this.log.info(
-        'Any devices added manually will update the downloaded devices'
+        'Any devices added manually will update the downloaded devices',
       );
 
       const pApi = new PlejdRemoteApi(
@@ -51,7 +51,7 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
         this.config.site,
         this.config.username,
         this.config.password,
-        true
+        true,
       );
       pApi
         .getPlejdRemoteSite()
@@ -66,7 +66,7 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
       this.configureDevices(this.log, this.config, undefined);
     } else {
       this.log.warn(
-        'No settings are prepared, either supply crypto key & devices OR username, password & site'
+        'No settings are prepared, either supply crypto key & devices OR username, password & site',
       );
     }
   };
@@ -130,7 +130,7 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
 
     if (!config.crypto_key) {
       log.error(
-        'No Crypto key was found in the configuration. Check the plugin documentation for more info'
+        'No Crypto key was found in the configuration. Check the plugin documentation for more info',
       );
     }
 
@@ -146,7 +146,7 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
     this.plejdService = new PlejdService(
       this.userInputConfig,
       log,
-      this.onPlejdUpdates.bind(this)
+      this.onPlejdUpdates.bind(this),
     );
 
     this.api.on('didFinishLaunching', () => this.discoverDevices());
@@ -164,34 +164,34 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
   discoverDevices = () => {
     const units = this.userInputConfig!.devices.map((x) => x.uuid);
     const notRegistered = this.accessories.filter(
-      (ac) => !units.includes(ac.UUID)
+      (ac) => !units.includes(ac.UUID),
     );
     if (notRegistered.length > 0) {
       this.api.unregisterPlatformAccessories(
         PLUGIN_NAME,
         PLATFORM_NAME,
-        notRegistered
+        notRegistered,
       );
     }
 
     for (const device of this.userInputConfig!.devices) {
       const existingAccessory = this.accessories.find(
-        (accessory) => accessory.UUID === device.uuid
+        (accessory) => accessory.UUID === device.uuid,
       );
       if (existingAccessory) {
         this.plejdHandlers.push(
-          new PlejdPlatformAccessoryHandler(this, existingAccessory, device)
+          new PlejdPlatformAccessoryHandler(this, existingAccessory, device),
         );
       } else {
         this.log.info('Adding new accessory |', device.name);
         const accessory = new this.api.platformAccessory(
           device.name,
-          device.uuid
+          device.uuid,
         );
         accessory.context.device = device;
         // See above.
         this.plejdHandlers.push(
-          new PlejdPlatformAccessoryHandler(this, accessory, device)
+          new PlejdPlatformAccessoryHandler(this, accessory, device),
         );
         // link the accessory to your platform
         this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [
@@ -203,22 +203,22 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
 
   onPlejdUpdates = (identifier: number, isOn: boolean, brightness?: number) => {
     const uuid = this.userInputConfig!.devices.find(
-      (d) => d.identifier === identifier
+      (d) => d.identifier === identifier,
     )?.uuid;
     if (uuid === undefined) {
       this.log.warn(
-        `Got updates on a device with identifier ${identifier} but it is not registered in HB settings`
+        `Got updates on a device with identifier ${identifier} but it is not registered in HB settings`,
       );
       return;
     }
     const existingAccessory = this.accessories.find(
-      (accessory) => accessory.UUID === uuid!
+      (accessory) => accessory.UUID === uuid!,
     );
     const device = this.userInputConfig!.devices.find(
-      (dev) => dev.identifier === identifier
+      (dev) => dev.identifier === identifier,
     );
     const plejdHandler = this.plejdHandlers.find(
-      (dev) => dev.device.identifier === identifier
+      (dev) => dev.device.identifier === identifier,
     );
     if (existingAccessory && device && plejdHandler) {
       if (device.isDimmer) {
@@ -254,7 +254,7 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
         'Unable find device associated with update |',
         existingAccessory,
         device,
-        plejdHandler
+        plejdHandler,
       );
     }
   };

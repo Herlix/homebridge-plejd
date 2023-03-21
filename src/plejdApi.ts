@@ -60,25 +60,23 @@ export default class PlejdRemoteApi extends EventEmitter {
     return new Promise<Site>((resolve, reject) => {
       this.login()
         .then(() => {
-
           this.getSites()
             .then((site) => {
-
               this.getSite(site)
-                .then(site => {
+                .then((site) => {
                   resolve(site);
                 })
-                .catch(e => {
+                .catch((e) => {
                   this.log.error(`${e}`);
                   reject(e);
                 });
-
-            }).catch(e => {
+            })
+            .catch((e) => {
               this.log.error(`${e}`);
               reject(e);
             });
-
-        }).catch(e => {
+        })
+        .catch((e) => {
           this.log.error(`${e}`);
           reject(e);
         });
@@ -95,11 +93,10 @@ export default class PlejdRemoteApi extends EventEmitter {
     });
 
     return new Promise<string>((resolve, reject) => {
-      instance.post(
-        API_LOGIN_URL,
-        {
-          'username': this.username,
-          'password': this.password,
+      instance
+        .post(API_LOGIN_URL, {
+          username: this.username,
+          password: this.password,
         })
         .then((response) => {
           this.log.debug('plejd-api: got session token response');
@@ -110,14 +107,17 @@ export default class PlejdRemoteApi extends EventEmitter {
             return;
           }
 
-
           resolve(response.data.sessionToken);
         })
         .catch((error) => {
           if (error.response.status === 400) {
-            reject('error: server returned status 400. probably invalid credentials, please verify.');
+            reject(
+              'error: server returned status 400. probably invalid credentials, please verify.',
+            );
           } else {
-            reject('error: unable to retrieve session token response: ' + error);
+            reject(
+              'error: unable to retrieve session token response: ' + error,
+            );
           }
         });
     });
@@ -136,10 +136,13 @@ export default class PlejdRemoteApi extends EventEmitter {
     return new Promise<SiteDto>((resolve, reject) => {
       this.log.debug('Sending POST to ' + API_BASE_URL + API_SITE_LIST_URL);
 
-      instance.post(API_SITE_LIST_URL)
+      instance
+        .post(API_SITE_LIST_URL)
         .then((response) => {
           this.log.debug('plejd-api: got detailed sites response');
-          const site = response.data.result.find(x => x.site.title === this.siteName);
+          const site = response.data.result.find(
+            (x) => x.site.title === this.siteName,
+          );
 
           if (!site) {
             reject('failed to find a site named ' + this.siteName);
@@ -149,7 +152,9 @@ export default class PlejdRemoteApi extends EventEmitter {
           resolve(site as SiteDto);
         })
         .catch((error) => {
-          return reject('plejd-api: unable to retrieve list of sites. error: ' + error);
+          return reject(
+            'plejd-api: unable to retrieve list of sites. error: ' + error,
+          );
         });
     });
   };
@@ -167,7 +172,8 @@ export default class PlejdRemoteApi extends EventEmitter {
     return new Promise<Site>((resolve, reject) => {
       this.log.debug('Sending POST to ' + API_BASE_URL + API_SITE_DETAILS_URL);
 
-      instance.post(API_SITE_DETAILS_URL, { siteId: site.site.siteId })
+      instance
+        .post(API_SITE_DETAILS_URL, { siteId: site.site.siteId })
         .then((response) => {
           this.log.debug('plejd-api: got site details response');
           if (response.data.result.length === 0) {
@@ -183,7 +189,9 @@ export default class PlejdRemoteApi extends EventEmitter {
           }
         })
         .catch((error) => {
-          return reject('plejd-api: unable to retrieve the crypto key. error: ' + error);
+          return reject(
+            'plejd-api: unable to retrieve the crypto key. error: ' + error,
+          );
         });
     });
   };

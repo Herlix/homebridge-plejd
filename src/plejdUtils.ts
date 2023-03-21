@@ -9,8 +9,16 @@ export const plejdChalResp = (key, chal) => {
   return xor(part1, part2);
 };
 
-export const plejdEncodeDecode = (key: Buffer, addressBuffer: Buffer, data: Buffer): Buffer => {
-  const buf = Buffer.concat([addressBuffer, addressBuffer, addressBuffer.subarray(0, 4)]);
+export const plejdEncodeDecode = (
+  key: Buffer,
+  addressBuffer: Buffer,
+  data: Buffer,
+): Buffer => {
+  const buf = Buffer.concat([
+    addressBuffer,
+    addressBuffer,
+    addressBuffer.subarray(0, 4),
+  ]);
   const cipher = createCipheriv('aes-128-ecb', key, '');
   cipher.setAutoPadding(false);
 
