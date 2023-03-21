@@ -30,6 +30,7 @@ Check out ble lib [@abandonware/Noble](https://github.com/abandonware/noble) for
 <br/>
 
 ### Settings
+
 Use Plejd Login information (username, password, site) to let the addon take care of getting token.
 
 Another alternative is to list the crypto key and devices manually.
@@ -39,12 +40,35 @@ If you choose to use both, the devices will be updated according yo what you set
 Check the logs on start up if you'd like to remove the login info after it's been used.
 
 Device info can be found like [this](./docs/Device%20Info.md)!
+
+## Docker Compose
+
+I'm running this in docker-compose on a Raspberry PI 4b 8gb.
+
+Raspberry pi is running Debian Bullseye (Raspberry Pi OS) with docker and docker compose installed, nothing extra.
+
+
+```yml
+  homebridge:
+    image: oznu/homebridge:latest
+    restart: unless-stopped
+    network_mode: host
+    privileged: true
+    volumes:
+      - /home/pi/.homebridge:/homebridge
+    logging:
+      driver: json-file
+      options:
+        max-size: "10mb"
+        max-file: "1"
+
+```
+
 ### Notes
+
 This plugin lacks testing for multiple platforms. Feel free to test on your system. The main dependency [@abandonware/Noble](https://github.com/abandonware/noble) is your guide in case of your separate system. Usually BLE is the problem.
 
 Feel free to open a ticket if you can't get it working. 
-
-Docker: BLE seems to be a hassle to get up an running. If you get it up and running please let me know. (I've not poured much time into it.)
 
 ## Thanks
 
