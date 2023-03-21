@@ -162,7 +162,6 @@ export class PlejdService {
     );
 
     this.connectedPeripheral = peripheral;
-    this.log.debug('haa', this.connectedPeripheral);
 
     this.addressBuffer = reverseBuffer(
       Buffer.from(String(addr).replace(/:/g, ''), 'hex'),
