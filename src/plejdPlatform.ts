@@ -206,10 +206,15 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
     this.plejdHandlers.push(
       new PlejdPlatformAccessoryHandler(this, accessory, device),
     );
+
     // link the accessory to your platform
     this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [
       accessory,
     ]);
+
+    if (!this.accessories.find((x) => x.UUID === device.uuid)) {
+      this.accessories.push(accessory);
+    }
   };
 
   onPlejdUpdates = (identifier: number, isOn: boolean, brightness?: number) => {

@@ -274,6 +274,7 @@ export class PlejdService {
   };
 
   private startPlejdQueue = () => {
+    clearInterval(this.queueTimer);
     this.queueTimer = setTimeout(
       () => this.writePlejdQueueItems(),
       PLEJD_WRITE_TIMEOUT,
@@ -285,12 +286,16 @@ export class PlejdService {
 
     if (this.dataCharacteristic && data) {
       this.plejdWrite(this.dataCharacteristic, data);
+      this.queueTimer = setTimeout(
+        () => this.startPlejdQueue(),
+        PLEJD_WRITE_TIMEOUT / 2,
+      );
+    } else {
+      this.queueTimer = setTimeout(
+        () => this.startPlejdQueue(),
+        PLEJD_WRITE_TIMEOUT,
+      );
     }
-
-    this.queueTimer = setTimeout(
-      () => this.startPlejdQueue(),
-      PLEJD_WRITE_TIMEOUT,
-    );
   };
 
   private startPlejdPing = (pingChar) => {
