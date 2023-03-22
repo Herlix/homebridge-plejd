@@ -69,4 +69,10 @@ Feel free to open a ticket if you can't get it working.
 
 ## Thanks
 
-Big thanks to [@blommegard](https://github.com/blommegard) with [this](https://github.com/blommegard/homebridge-plejd) project. As well as [@klali](https://github.com/klali) with [this](https://github.com/klali/ha-plejd) project.
+Big thanks to:
+
+[@blommegard](https://github.com/blommegard) with [homebridge-plejd](https://github.com/blommegard/homebridge-plejd)
+
+[@klali](https://github.com/klali) with [ha-plejd](https://github.com/klali/ha-plejd)
+
+[@thomasloven](https://github.com/thomasloven) with [plejd2mqtt](https://github.com/thomasloven/plejd2mqtt)
