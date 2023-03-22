@@ -49,15 +49,17 @@
             "title": "Model",
             "type": "string",
             "enum": [
-              "CTR-01",
-              "DAL-01",
               "DIM-01",
-              "DIM-01-2P",
               "DIM-02",
               "LED-10",
-              "REL-01-2P",
+              "DIM-01-2P",
+              "REL-01",
               "REL-02",
-              "SPR-01"
+              "REL-01-2P",
+              "DAL-01",
+              "SPR-01",
+              "CTR-01",
+              "WPH-01"
             ],
             "required": true
           },

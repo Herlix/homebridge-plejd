@@ -188,27 +188,28 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
           new PlejdPlatformAccessoryHandler(this, existingAccessory, device),
         );
       } else {
-        let name = device.name;
-        this.log.info('Adding new accessory |', name);
-        if (device.room) {
-          name = device.room + ' - ' + name;
-        }
-
-        const accessory = new this.api.platformAccessory(
-          device.name,
-          device.uuid,
-        );
-        accessory.context.device = device;
-        // See above.
-        this.plejdHandlers.push(
-          new PlejdPlatformAccessoryHandler(this, accessory, device),
-        );
-        // link the accessory to your platform
-        this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [
-          accessory,
-        ]);
+        this.addNewDevice(device);
       }
     }
+  };
+
+  addNewDevice = (device: Device) => {
+    let name = device.name;
+    this.log.info('Adding new accessory |', name);
+    if (device.room) {
+      name = device.room + ' - ' + name;
+    }
+
+    const accessory = new this.api.platformAccessory(device.name, device.uuid);
+    accessory.context.device = device;
+    // See above.
+    this.plejdHandlers.push(
+      new PlejdPlatformAccessoryHandler(this, accessory, device),
+    );
+    // link the accessory to your platform
+    this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [
+      accessory,
+    ]);
   };
 
   onPlejdUpdates = (identifier: number, isOn: boolean, brightness?: number) => {
@@ -260,12 +261,15 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
 
       plejdHandler.updateState(isOn, brightness);
     } else {
-      this.log.warn(
-        'Unable find device associated with update |',
-        existingAccessory,
-        device,
-        plejdHandler,
-      );
+      if (device) {
+        this.addNewDevice(device);
+        this.onPlejdUpdates(identifier, isOn, brightness);
+      } else {
+        this.log.info(
+          'Unable find HomKit device associated with incoming Plejd update |',
+          device,
+        );
+      }
     }
   };
 
