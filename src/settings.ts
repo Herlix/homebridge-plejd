@@ -12,7 +12,13 @@ export const PLEJD_WRITE_TIMEOUT = 100;
 /**
  * Lights and switches from Plejd
  */
-export const PLEJD_LIGHTS = ['DIM-01', 'DIM-02', 'LED-10', 'DIM-01-2P'];
+export const PLEJD_LIGHTS = [
+  'DIM-01',
+  'DIM-02',
+  'LED-10',
+  'DIM-01-2P',
+  'LED-75',
+];
 export const PLEJD_SWITCHES = [
   'REL-01',
   'REL-02',
@@ -20,6 +26,14 @@ export const PLEJD_SWITCHES = [
   'DAL-01',
   'SPR-01',
   'CTR-01',
-  'WPH-01',
 ];
-export const PLEJD_SENSOR = ['GWY-01'];
+export const PLEJD_ADDONS = [
+  'RTR-01',
+  'WPH-01',
+  'WRT-01',
+  'MNT-01',
+  'MNT-02',
+  'GWY-01',
+  'BAT-01',
+  'EXT-01',
+];

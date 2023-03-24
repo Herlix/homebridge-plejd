@@ -8,7 +8,12 @@ import {
   Characteristic,
 } from 'homebridge';
 
-import { PLATFORM_NAME, PLEJD_LIGHTS, PLUGIN_NAME } from './settings';
+import {
+  PLATFORM_NAME,
+  PLEJD_ADDONS,
+  PLEJD_LIGHTS,
+  PLUGIN_NAME,
+} from './settings';
 import { PlejdPlatformAccessoryHandler } from './plejdPlatformAccessory';
 import { UserInputConfig } from './model/userInputConfig';
 import { Device } from './model/device';
@@ -84,6 +89,10 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
 
         const e = site.plejdDevices.find((x) => x.deviceId === id)!;
         const dim = e.firmware.notes;
+
+        if (PLEJD_ADDONS.includes(dim)) {
+          return;
+        }
 
         const room = site.rooms.find((x) => x.roomId === item.roomId);
 
@@ -222,9 +231,7 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
       (d) => d.identifier === identifier,
     )?.uuid;
     if (uuid === undefined) {
-      this.log.warn(
-        `Got updates on a device with identifier ${identifier} but it is not registered in HB settings`,
-      );
+      // Scene or Room, eg: Unused
       return;
     }
     const existingAccessory = this.accessories.find(
