@@ -68,6 +68,12 @@
             "type": "integer",
             "placeholder": "11",
             "required": true
+          },
+          "hidden": {
+            "title": "Hidden",
+            "type": "boolean",
+            "default": false,
+            "required": false
           }
         }
       }

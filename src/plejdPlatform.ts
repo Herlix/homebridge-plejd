@@ -111,6 +111,7 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
           isDimmer: PLEJD_LIGHTS.includes(dim),
           uuid: this.generateId(identifier.toString()),
           room: room?.title,
+          hidden: false,
         };
 
         items.push(res);
@@ -119,7 +120,12 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
       items.forEach((item) => {
         const pre = devices.findIndex((x) => x.identifier === item.identifier);
         if (pre !== -1) {
-          devices[pre].name = item.name;
+          if (devices[pre].hidden) {
+            log.info('Removing hidden device |', devices[pre]);
+            devices.splice(pre);
+          } else {
+            devices[pre].name = item.name;
+          }
         } else {
           devices.push(item);
         }
@@ -192,7 +198,7 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
       const existingAccessory = this.accessories.find(
         (accessory) => accessory.UUID === device.uuid,
       );
-      if (existingAccessory) {
+      if (existingAccessory && !device.hidden) {
         this.plejdHandlers.push(
           new PlejdPlatformAccessoryHandler(this, existingAccessory, device),
         );

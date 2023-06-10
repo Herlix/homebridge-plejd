@@ -5,4 +5,5 @@ export interface Device {
   isDimmer: boolean;
   uuid: string;
   room?: string;
+  hidden: boolean;
 }
