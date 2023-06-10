@@ -121,7 +121,7 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
         const pre = devices.findIndex((x) => x.identifier === item.identifier);
         if (pre !== -1) {
           if (devices[pre].hidden) {
-            log.info('Removing hidden device |', devices[pre]);
+            log.debug('Hiding device |', devices[pre]);
             devices.splice(pre);
           } else {
             devices[pre].name = item.name;
@@ -159,7 +159,10 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
     };
 
     log.info('Plejd Crypto Key:', config.crypto_key);
-    log.info('Plejd Devices:', this.userInputConfig.devices);
+    log.info(
+      'Plejd Devices connected to HomeKit:',
+      this.userInputConfig.devices,
+    );
 
     this.plejdService = new PlejdService(
       this.userInputConfig,
@@ -195,10 +198,15 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
     this.log.debug('registering devices', this.userInputConfig?.devices);
 
     for (const device of this.userInputConfig!.devices) {
+      if (device.hidden) {
+        continue;
+      }
+
       const existingAccessory = this.accessories.find(
         (accessory) => accessory.UUID === device.uuid,
       );
-      if (existingAccessory && !device.hidden) {
+
+      if (existingAccessory) {
         this.plejdHandlers.push(
           new PlejdPlatformAccessoryHandler(this, existingAccessory, device),
         );
