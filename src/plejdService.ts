@@ -58,7 +58,9 @@ export class PlejdService {
     this.connectedPeripheral = null;
     this.sendQueue = [];
     noble.on('stateChange', (state) => this.stateChange(state));
-    noble.on('warning', (msg) => this.log.warn('Noble warning: ', msg));
+    noble.on('warning', (msg) => {
+      this.log.debug('Noble warning: ', msg);
+    });
   }
 
   /// Brightness should be between 1-100

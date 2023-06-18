@@ -1,3 +1,5 @@
+#### 1.3.4 (2023-06-18)
+Move internal plugin errors to debug mode, reducing clutter in the log.
 #### 1.3.3 (2023-06-10)
 Improve log messages & minor improvements
 
