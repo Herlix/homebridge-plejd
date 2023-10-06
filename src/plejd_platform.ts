@@ -14,12 +14,17 @@ import {
   PLEJD_LIGHTS,
   PLUGIN_NAME,
 } from './settings';
-import { PlejdPlatformAccessoryHandler } from './plejdPlatformAccessory';
-import { UserInputConfig } from './model/userInputConfig';
-import { Device } from './model/device';
-import { PlejdService } from './plejdService';
-import PlejdRemoteApi from './plejdApi';
-import { Site } from './model/plejdSite';
+import { PlejdPlatformAccessoryHandler } from './plejd_platform_accessory';
+import { UserInputConfig } from './dto/userInputConfig';
+import { Device } from './dto/device';
+import { PlejdService } from './plejd_service';
+import PlejdRemoteApi from './client/plejd_api';
+import { Site } from './dto/plejdSite';
+
+let plejd: typeof import('plejd_api');
+import('plejd_api').then((x) => {
+  plejd = x;
+});
 
 export class PlejdPlatform implements DynamicPlatformPlugin {
   public readonly Service: typeof Service = this.api.hap.Service;
@@ -40,7 +45,6 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
     public readonly api: API,
   ) {
     this.log.debug('Finished initializing platform:', this.config.platform);
-
     api.on('didFinishLaunching', this.configurePlejd);
   }
 
@@ -52,11 +56,11 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
       );
 
       const pApi = new PlejdRemoteApi(
-        this.log,
         this.config.site,
         this.config.username,
         this.config.password,
         true,
+        this.log,
       );
       pApi
         .getPlejdRemoteSite()
@@ -76,7 +80,11 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
     }
   };
 
-  configureDevices = (log: Logger, config: PlatformConfig, site?: Site) => {
+  configureDevices = async (
+    log: Logger,
+    config: PlatformConfig,
+    site?: Site,
+  ) => {
     const devices = (config.devices as Device[]) || [];
 
     if (site) {
@@ -171,6 +179,7 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
     );
 
     this.discoverDevices();
+    this.log.warn('#####', await plejd.greet());
   };
 
   /**

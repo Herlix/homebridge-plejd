@@ -1,8 +1,7 @@
 import { API } from 'homebridge';
 
 import { PLATFORM_NAME, PLUGIN_NAME } from './settings';
-import { PlejdPlatform } from './plejdPlatform';
-
+import { PlejdPlatform } from './plejd_platform';
 /**
  * This method registers the platform with Homebridge
  */

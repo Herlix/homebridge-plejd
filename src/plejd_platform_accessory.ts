@@ -1,7 +1,7 @@
 import { Service, PlatformAccessory, CharacteristicValue } from 'homebridge';
-import { Device } from './model/device';
+import { Device } from './dto/device';
 
-import { PlejdPlatform } from './plejdPlatform';
+import { PlejdPlatform } from './plejd_platform';
 import { PLATFORM_NAME } from './settings';
 
 interface DeviceState {

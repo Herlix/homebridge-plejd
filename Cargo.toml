@@ -1,0 +1,4 @@
+[workspace]
+members = ['plejd-api']
+
+default-members = ["plejd-api"]

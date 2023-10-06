@@ -1,10 +1,10 @@
 import { Logger } from 'homebridge';
-import { UserInputConfig } from './model/userInputConfig';
+import { UserInputConfig } from './dto/userInputConfig';
 import {
   plejdChalResp as plejdCharResp,
   plejdEncodeDecode,
   reverseBuffer,
-} from './plejdUtils';
+} from './plejd_utils';
 
 import { randomBytes } from 'crypto';
 import noble from '@abandonware/noble';
@@ -40,8 +40,8 @@ export class PlejdService {
   private connectedPeripheral: noble.Peripheral | null;
   private addressBuffer: Buffer | null;
   private dataCharacteristic: noble.Characteristic | null;
-  private pingTimer!: NodeJS.Timer;
-  private queueTimer!: NodeJS.Timer;
+  private pingTimer!: NodeJS.Timeout;
+  private queueTimer!: NodeJS.Timeout;
   private sendQueue: Buffer[];
 
   constructor(
