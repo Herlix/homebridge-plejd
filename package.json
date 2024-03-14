@@ -2,8 +2,8 @@
   "private": false,
   "displayName": "Plejd",
   "name": "homebridge-plejd",
-  "author": "Alexander Herlin",
-  "version": "1.3.4",
+  "author": "Herlix",
+  "version": "1.3.5",
   "description": "HomeKit support for the Plejd BLE platform using Homebridge",
   "license": "MIT",
   "repository": {
@@ -29,7 +29,7 @@
     "plejd"
   ],
   "dependencies": {
-    "@abandonware/noble": "^1.9.2-15",
+    "@abandonware/noble": "^1.9.2-24",
     "axios": "^1.3",
     "events": "^3.3",
     "lodash": "^4.17"

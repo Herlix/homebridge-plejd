@@ -27,10 +27,6 @@
     "semi": [
       "off"
     ],
-    "comma-dangle": [
-      "warn",
-      "always-multiline"
-    ],
     "dot-notation": "off",
     "eqeqeq": "warn",
     "curly": [
