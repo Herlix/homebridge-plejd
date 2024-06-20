@@ -1,8 +1,8 @@
-import { Service, PlatformAccessory, CharacteristicValue } from 'homebridge';
-import { Device } from './model/device';
+import { Service, PlatformAccessory, CharacteristicValue } from "homebridge";
+import { Device } from "./model/device.js";
 
-import { PlejdPlatform } from './plejdPlatform';
-import { PLATFORM_NAME } from './settings';
+import { PlejdPlatform } from "./plejdPlatform.js";
+import { PLATFORM_NAME } from "./settings.js";
 
 interface DeviceState {
   isOn: boolean;
@@ -75,7 +75,7 @@ export class PlejdPlatformAccessoryHandler {
 
   updateState = (isOn: boolean, brightness?: number) => {
     this.state.isOn = isOn;
-    this.platform.log.debug('updateState | Sending isOn', isOn);
+    this.platform.log.debug("updateState | Sending isOn", isOn);
     this.service
       .getCharacteristic(this.platform.Characteristic.On)
       .updateValue(isOn);
@@ -83,7 +83,7 @@ export class PlejdPlatformAccessoryHandler {
     if (brightness) {
       this.state.brightness = Math.round(brightness);
       this.platform.log.debug(
-        'update state | Sending brightness',
+        "update state | Sending brightness",
         this.state.brightness,
       );
       this.service
@@ -99,8 +99,8 @@ export class PlejdPlatformAccessoryHandler {
     const newVal = value as boolean;
     this.platform.log.info(
       `Updating state | ${this.device.name} | to ${
-        newVal ? 'On' : 'off'
-      } | from ${this.state.isOn ? 'On' : 'Off'}`,
+        newVal ? "On" : "off"
+      } | from ${this.state.isOn ? "On" : "Off"}`,
     );
     this.updateState(newVal, this.state.brightness);
     this.platform.plejdService?.updateState(
@@ -112,7 +112,7 @@ export class PlejdPlatformAccessoryHandler {
 
   private getOn = async (): Promise<CharacteristicValue> => {
     this.platform.log.debug(
-      'Get Characteristic On',
+      "Get Characteristic On",
       this.device.name,
       this.state.isOn,
     );
@@ -134,7 +134,7 @@ export class PlejdPlatformAccessoryHandler {
 
   private getBrightness = async (): Promise<CharacteristicValue> => {
     this.platform.log.debug(
-      'Get Characteristic Brightness',
+      "Get Characteristic Brightness",
       this.device.name,
       this.state.brightness,
     );

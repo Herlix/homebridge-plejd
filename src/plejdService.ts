@@ -1,14 +1,14 @@
 import { Logger } from "homebridge";
-import { UserInputConfig } from "./model/userInputConfig";
+import { UserInputConfig } from "./model/userInputConfig.js";
 import {
   plejdChalResp as plejdCharResp,
   plejdEncodeDecode,
   reverseBuffer,
-} from "./plejdUtils";
+} from "./plejdUtils.js";
 
 import { randomBytes } from "crypto";
 import noble from "@abandonware/noble";
-import { PLEJD_WRITE_TIMEOUT } from "./settings";
+import { PLEJD_WRITE_TIMEOUT } from "./settings.js";
 
 const NOBLE_IS_POWER_ON = "oweredOn";
 

@@ -13,13 +13,13 @@ import {
   PLEJD_ADDONS,
   PLEJD_LIGHTS,
   PLUGIN_NAME,
-} from "./settings";
-import { PlejdPlatformAccessoryHandler } from "./plejdPlatformAccessory";
-import { UserInputConfig } from "./model/userInputConfig";
-import { Device } from "./model/device";
-import { PlejdService } from "./plejdService";
-import PlejdRemoteApi from "./plejdApi";
-import { Site } from "./model/plejdSite";
+} from "./settings.js";
+import { PlejdPlatformAccessoryHandler } from "./plejdPlatformAccessory.js";
+import { UserInputConfig } from "./model/userInputConfig.js";
+import { Device } from "./model/device.js";
+import { PlejdService } from "./plejdService.js";
+import PlejdRemoteApi from "./plejdApi.js";
+import { Site } from "./model/plejdSite.js";
 
 export class PlejdPlatform implements DynamicPlatformPlugin {
   public readonly Service: typeof Service;

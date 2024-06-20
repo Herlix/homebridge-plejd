@@ -13,6 +13,6 @@
     "strict": true,
     "target": "ES2022"
   },
-  "include": ["eslint.config.mjs", "homebridge-ui", "src"],
+  "include": ["eslint.config.mjs", "homebridge-ui", "src/**/*.ts"],
   "exclude": ["**/*.spec.ts"]
 }
