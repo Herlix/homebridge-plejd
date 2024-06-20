@@ -16,12 +16,12 @@ const NOBLE_IS_POWER_ON = "oweredOn";
  * Plejd BLE UUIDs
  */
 enum PlejdCharacteristics {
-  Service = "1ba000160854726be45040c957391b5",
-  LightLevel = "1ba000360854726be45040c957391b5",
-  Data = "1ba000460854726be45040c957391b5",
-  LastData = "1ba000560854726be45040c957391b5",
-  Auth = "1ba000960854726be45040c957391b5",
-  Ping = "1ba000a60854726be45040c957391b5",
+  Service = "31ba000160854726be45040c957391b5",
+  LightLevel = "31ba000360854726be45040c957391b5",
+  Data = "31ba000460854726be45040c957391b5",
+  LastData = "31ba000560854726be45040c957391b5",
+  Auth = "31ba000960854726be45040c957391b5",
+  Ping = "31ba000a60854726be45040c957391b5",
 }
 
 enum PlejdCommand {
@@ -202,6 +202,7 @@ export class PlejdService {
     services: noble.Service[],
     characteristics: noble.Characteristic[],
   ) => {
+    characteristics.forEach((c) => this.log.info("Characteristic: ", c.uuid));
     const authChar = characteristics.find(
       (char) => char.uuid === PlejdCharacteristics.Auth,
     );

@@ -1,5 +1,9 @@
 #### 1.3.6 (2024-06-20)
 
+Updated plejd ble characteristict
+
+#### 1.3.6 (2024-06-20)
+
 Fix import issues and update configurations
 
 #### 1.3.6 (2024-06-20)
