@@ -6,25 +6,24 @@ import {
   PlatformConfig,
   Service,
   Characteristic,
-} from 'homebridge';
+} from "homebridge";
 
 import {
   PLATFORM_NAME,
   PLEJD_ADDONS,
   PLEJD_LIGHTS,
   PLUGIN_NAME,
-} from './settings';
-import { PlejdPlatformAccessoryHandler } from './plejdPlatformAccessory';
-import { UserInputConfig } from './model/userInputConfig';
-import { Device } from './model/device';
-import { PlejdService } from './plejdService';
-import PlejdRemoteApi from './plejdApi';
-import { Site } from './model/plejdSite';
+} from "./settings";
+import { PlejdPlatformAccessoryHandler } from "./plejdPlatformAccessory";
+import { UserInputConfig } from "./model/userInputConfig";
+import { Device } from "./model/device";
+import { PlejdService } from "./plejdService";
+import PlejdRemoteApi from "./plejdApi";
+import { Site } from "./model/plejdSite";
 
 export class PlejdPlatform implements DynamicPlatformPlugin {
-  public readonly Service: typeof Service = this.api.hap.Service;
-  public readonly Characteristic: typeof Characteristic =
-    this.api.hap.Characteristic;
+  public readonly Service: typeof Service;
+  public readonly Characteristic: typeof Characteristic;
 
   public userInputConfig?: UserInputConfig;
   public plejdService?: PlejdService;
@@ -37,18 +36,20 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
   constructor(
     public readonly log: Logger,
     public readonly config: PlatformConfig,
-    public readonly api: API,
+    public readonly homebridgeApi: API,
   ) {
-    this.log.debug('Finished initializing platform:', this.config.platform);
+    this.log.debug("Finished initializing platform:", this.config.platform);
 
-    api.on('didFinishLaunching', this.configurePlejd);
+    homebridgeApi.on("didFinishLaunching", this.configurePlejd);
+    this.Characteristic = homebridgeApi.hap.Characteristic;
+    this.Service = homebridgeApi.hap.Service;
   }
 
   configurePlejd = () => {
     if (this.config.password && this.config.site && this.config.username) {
-      this.log.info('Using login information to fetch devices & crypto key');
+      this.log.info("Using login information to fetch devices & crypto key");
       this.log.info(
-        'Any devices added manually will update the downloaded devices',
+        "Any devices added manually will update the downloaded devices",
       );
 
       const pApi = new PlejdRemoteApi(
@@ -67,11 +68,11 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
       this.config.devices &&
       this.config.devices.count > 0
     ) {
-      this.log.info('Using supplied crypto key & devices');
+      this.log.info("Using supplied crypto key & devices");
       this.configureDevices(this.log, this.config, undefined);
     } else {
       this.log.warn(
-        'No settings are prepared, either supply crypto key & devices OR username, password & site',
+        "No settings are prepared, either supply crypto key & devices OR username, password & site",
       );
     }
   };
@@ -98,7 +99,7 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
 
         let identifier = site.inputAddress[id]![0]!;
         if (
-          dim.endsWith('-02') &&
+          dim.endsWith("-02") &&
           items.find((a) => a.identifier === identifier) !== undefined
         ) {
           identifier += 1;
@@ -121,7 +122,7 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
         const pre = devices.findIndex((x) => x.identifier === item.identifier);
         if (pre !== -1) {
           if (devices[pre].hidden) {
-            log.debug('Hiding device |', devices[pre]);
+            log.debug("Hiding device |", devices[pre]);
             devices.splice(pre);
           } else {
             devices[pre].name = item.name;
@@ -136,31 +137,31 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
       if (devices[i].model) {
         devices[i].isDimmer = PLEJD_LIGHTS.includes(devices[i].model);
       } else {
-        log.error('Missing device model |', devices[i].name);
+        log.error("Missing device model |", devices[i].name);
       }
 
       if (devices[i].identifier) {
         devices[i].uuid = this.generateId(devices[i].identifier.toString());
       } else {
-        log.error('Missing device identifier |', devices[i].name);
+        log.error("Missing device identifier |", devices[i].name);
       }
     }
 
     if (!config.crypto_key) {
       log.error(
-        'No Crypto key was found in the configuration. Check the plugin documentation for more info',
+        "No Crypto key was found in the configuration. Check the plugin documentation for more info",
       );
     }
 
-    const cryptoKey = Buffer.from(config.crypto_key.replace(/-/g, ''), 'hex');
+    const cryptoKey = Buffer.from(config.crypto_key.replace(/-/g, ""), "hex");
     this.userInputConfig = {
       devices: devices,
       cryptoKey: cryptoKey,
     };
 
-    log.info('Plejd Crypto Key:', config.crypto_key);
+    log.info("Plejd Crypto Key:", config.crypto_key);
     log.info(
-      'Plejd Devices connected to HomeKit:',
+      "Plejd Devices connected to HomeKit:",
       this.userInputConfig.devices,
     );
 
@@ -178,7 +179,7 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
    * It should be used to setup event handlers for characteristics and update respective values.
    */
   configureAccessory = (accessory: PlatformAccessory) => {
-    this.log.info('Loading accessory from cache | ', accessory.displayName);
+    this.log.info("Loading accessory from cache | ", accessory.displayName);
     this.accessories.push(accessory);
   };
 
@@ -188,14 +189,14 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
       (ac) => !units.includes(ac.UUID),
     );
     if (notRegistered.length > 0) {
-      this.api.unregisterPlatformAccessories(
+      this.homebridgeApi.unregisterPlatformAccessories(
         PLUGIN_NAME,
         PLATFORM_NAME,
         notRegistered,
       );
     }
 
-    this.log.debug('registering devices', this.userInputConfig?.devices);
+    this.log.debug("registering devices", this.userInputConfig?.devices);
 
     for (const device of this.userInputConfig!.devices) {
       if (device.hidden) {
@@ -218,12 +219,15 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
 
   addNewDevice = (device: Device) => {
     let name = device.name;
-    this.log.info('Adding new accessory |', name);
+    this.log.info("Adding new accessory |", name);
     if (device.room) {
-      name = device.room + ' - ' + name;
+      name = device.room + " - " + name;
     }
 
-    const accessory = new this.api.platformAccessory(device.name, device.uuid);
+    const accessory = new this.homebridgeApi.platformAccessory(
+      device.name,
+      device.uuid,
+    );
     accessory.context.device = device;
     // See above.
     this.plejdHandlers.push(
@@ -231,7 +235,7 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
     );
 
     // link the accessory to your platform
-    this.api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [
+    this.homebridgeApi.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [
       accessory,
     ]);
 
@@ -262,13 +266,13 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
         const ser = existingAccessory.getService(this.Service.Lightbulb);
 
         if (!ser) {
-          this.log.warn('Unable to get service');
+          this.log.warn("Unable to get service");
         }
 
         const on = ser?.getCharacteristic(this.Characteristic.On);
 
         if (!on) {
-          this.log.warn('Unable to get Characteristic [On]');
+          this.log.warn("Unable to get Characteristic [On]");
         }
 
         on?.updateValue(isOn);
@@ -292,7 +296,7 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
         this.onPlejdUpdates(identifier, isOn, brightness);
       } else {
         this.log.info(
-          'Unable find HomKit device associated with incoming Plejd update |',
+          "Unable find HomKit device associated with incoming Plejd update |",
           device,
         );
       }
@@ -300,6 +304,6 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
   };
 
   private generateId = (input: string): string => {
-    return this.api.hap.uuid.generate(input);
+    return this.homebridgeApi.hap.uuid.generate(input);
   };
 }

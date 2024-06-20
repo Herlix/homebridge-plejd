@@ -1,7 +1,7 @@
-import { createCipheriv, createHash } from 'crypto';
+import { createCipheriv, createHash } from "crypto";
 
-export const plejdChalResp = (key, chal) => {
-  const intermediate = createHash('sha256').update(xor(key, chal)).digest();
+export const plejdChalResp = (key: Buffer, chal: Buffer) => {
+  const intermediate = createHash("sha256").update(xor(key, chal)).digest();
 
   const part1 = intermediate.slice(0, 16);
   const part2 = intermediate.slice(16);
@@ -19,19 +19,19 @@ export const plejdEncodeDecode = (
     addressBuffer,
     addressBuffer.subarray(0, 4),
   ]);
-  const cipher = createCipheriv('aes-128-ecb', key, '');
+  const cipher = createCipheriv("aes-128-ecb", key, "");
   cipher.setAutoPadding(false);
 
-  let ct = cipher.update(buf).toString('hex');
-  ct += cipher.final().toString('hex');
-  const ctBuff = Buffer.from(ct, 'hex');
+  let ct = cipher.update(buf).toString("hex");
+  ct += cipher.final().toString("hex");
+  const ctBuff = Buffer.from(ct, "hex");
 
-  let output = '';
+  let output = "";
   for (let i = 0, length = data.length; i < length; i++) {
     output += String.fromCharCode(data[i] ^ ctBuff[i % 16]);
   }
 
-  return Buffer.from(output, 'ascii');
+  return Buffer.from(output, "ascii");
 };
 
 export const reverseBuffer = (src: Buffer): Buffer => {

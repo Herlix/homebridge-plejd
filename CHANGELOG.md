@@ -1,3 +1,7 @@
+#### 1.3.6 (2024-06-20)
+
+Update dependencies
+
 #### 1.3.5 (2024-03-14)
 
 Update dependencies

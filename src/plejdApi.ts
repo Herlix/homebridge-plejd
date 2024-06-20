@@ -1,13 +1,13 @@
-import axios from 'axios';
-import EventEmitter from 'events';
-import { Logger } from 'homebridge';
-import { Site } from './model/plejdSite';
+import axios from "axios";
+import EventEmitter from "events";
+import { Logger } from "homebridge";
+import { Site } from "./model/plejdSite";
 
-const API_APP_ID = 'zHtVqXt8k4yFyk2QGmgp48D9xZr2G94xWYnF4dak';
-const API_BASE_URL = 'https://cloud.plejd.com/parse/';
-const API_LOGIN_URL = 'login';
-const API_SITE_LIST_URL = 'functions/getSiteList';
-const API_SITE_DETAILS_URL = 'functions/getSiteById';
+const API_APP_ID = "zHtVqXt8k4yFyk2QGmgp48D9xZr2G94xWYnF4dak";
+const API_BASE_URL = "https://cloud.plejd.com/parse/";
+const API_LOGIN_URL = "login";
+const API_SITE_LIST_URL = "functions/getSiteList";
+const API_SITE_DETAILS_URL = "functions/getSiteById";
 
 interface SitePermissionDto {
   siteId: string;
@@ -87,8 +87,8 @@ export default class PlejdRemoteApi extends EventEmitter {
     const instance = axios.create({
       baseURL: API_BASE_URL,
       headers: {
-        'X-Parse-Application-Id': API_APP_ID,
-        'Content-Type': 'application/json',
+        "X-Parse-Application-Id": API_APP_ID,
+        "Content-Type": "application/json",
       },
     });
 
@@ -99,11 +99,11 @@ export default class PlejdRemoteApi extends EventEmitter {
           password: this.password,
         })
         .then((response) => {
-          this.log.debug('plejd-api: got session token response');
+          this.log.debug("plejd-api: got session token response");
           this.sessionToken = response.data.sessionToken;
 
           if (!this.sessionToken) {
-            reject('no session token received.');
+            reject("no session token received.");
             return;
           }
 
@@ -112,11 +112,11 @@ export default class PlejdRemoteApi extends EventEmitter {
         .catch((error) => {
           if (error.response.status === 400) {
             reject(
-              'error: server returned status 400. probably invalid credentials, please verify.',
+              "error: server returned status 400. probably invalid credentials, please verify.",
             );
           } else {
             reject(
-              'error: unable to retrieve session token response: ' + error,
+              "error: unable to retrieve session token response: " + error,
             );
           }
         });
@@ -127,25 +127,25 @@ export default class PlejdRemoteApi extends EventEmitter {
     const instance = axios.create({
       baseURL: API_BASE_URL,
       headers: {
-        'X-Parse-Application-Id': API_APP_ID,
-        'X-Parse-Session-Token': this.sessionToken,
-        'Content-Type': 'application/json',
+        "X-Parse-Application-Id": API_APP_ID,
+        "X-Parse-Session-Token": this.sessionToken,
+        "Content-Type": "application/json",
       },
     });
 
     return new Promise<SiteDto>((resolve, reject) => {
-      this.log.debug('Sending POST to ' + API_BASE_URL + API_SITE_LIST_URL);
+      this.log.debug("Sending POST to " + API_BASE_URL + API_SITE_LIST_URL);
 
       instance
         .post(API_SITE_LIST_URL)
         .then((response) => {
-          this.log.debug('plejd-api: got detailed sites response');
+          this.log.debug("plejd-api: got detailed sites response");
           const site = response.data.result.find(
-            (x) => x.site.title === this.siteName,
+            (x: any) => x.site.title === this.siteName,
           );
 
           if (!site) {
-            reject('failed to find a site named ' + this.siteName);
+            reject("failed to find a site named " + this.siteName);
             return;
           }
 
@@ -153,7 +153,7 @@ export default class PlejdRemoteApi extends EventEmitter {
         })
         .catch((error) => {
           return reject(
-            'plejd-api: unable to retrieve list of sites. error: ' + error,
+            "plejd-api: unable to retrieve list of sites. error: " + error,
           );
         });
     });
@@ -163,21 +163,21 @@ export default class PlejdRemoteApi extends EventEmitter {
     const instance = axios.create({
       baseURL: API_BASE_URL,
       headers: {
-        'X-Parse-Application-Id': API_APP_ID,
-        'X-Parse-Session-Token': this.sessionToken,
-        'Content-Type': 'application/json',
+        "X-Parse-Application-Id": API_APP_ID,
+        "X-Parse-Session-Token": this.sessionToken,
+        "Content-Type": "application/json",
       },
     });
 
     return new Promise<Site>((resolve, reject) => {
-      this.log.debug('Sending POST to ' + API_BASE_URL + API_SITE_DETAILS_URL);
+      this.log.debug("Sending POST to " + API_BASE_URL + API_SITE_DETAILS_URL);
 
       instance
         .post(API_SITE_DETAILS_URL, { siteId: site.site.siteId })
         .then((response) => {
-          this.log.debug('plejd-api: got site details response');
+          this.log.debug("plejd-api: got site details response");
           if (response.data.result.length === 0) {
-            reject('No devices fount');
+            reject("No devices fount");
             return;
           }
 
@@ -185,12 +185,12 @@ export default class PlejdRemoteApi extends EventEmitter {
           if (this.site) {
             resolve(this.site!);
           } else {
-            reject('No Crypto has been retrieved yet');
+            reject("No Crypto has been retrieved yet");
           }
         })
         .catch((error) => {
           return reject(
-            'plejd-api: unable to retrieve the crypto key. error: ' + error,
+            "plejd-api: unable to retrieve the crypto key. error: " + error,
           );
         });
     });
