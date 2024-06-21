@@ -1,39 +1,39 @@
-import { Logger } from "homebridge";
-import { UserInputConfig } from "./model/userInputConfig.js";
+import { Logger } from 'homebridge';
+import { UserInputConfig } from './model/userInputConfig.js';
 import {
   plejdChalResp as plejdCharResp,
   plejdEncodeDecode,
   reverseBuffer,
-} from "./plejdUtils.js";
+} from './plejdUtils.js';
 
-import { randomBytes } from "crypto";
-import noble from "@abandonware/noble";
-import { PLEJD_WRITE_TIMEOUT } from "./settings.js";
+import { randomBytes } from 'crypto';
+import noble from '@abandonware/noble';
+import { PLEJD_WRITE_TIMEOUT } from './settings.js';
 
-const NOBLE_IS_POWER_ON = "oweredOn";
+const NOBLE_IS_POWER_ON = 'oweredOn';
 
 /**
  * Plejd BLE UUIDs
  */
 enum PlejdCharacteristics {
-  Service = "31ba000160854726be45040c957391b5",
-  LightLevel = "31ba000360854726be45040c957391b5",
-  Data = "31ba000460854726be45040c957391b5",
-  LastData = "31ba000560854726be45040c957391b5",
-  Auth = "31ba000960854726be45040c957391b5",
-  Ping = "31ba000a60854726be45040c957391b5",
+  Service = '31ba000160854726be45040c957391b5',
+  LightLevel = '31ba000360854726be45040c957391b5',
+  Data = '31ba000460854726be45040c957391b5',
+  LastData = '31ba000560854726be45040c957391b5',
+  Auth = '31ba000960854726be45040c957391b5',
+  Ping = '31ba000a60854726be45040c957391b5',
 }
 
 enum PlejdCommand {
-  UpdateState = "097",
-  StateBrightness = "0c8",
-  Brightness = "098", // 0-255
-  Time = "01b",
-  Scene = "021",
-  RequestResponse = "102",
-  RequestNoResponse = "110",
-  RequestReadValue = "103",
-  ButtonClick = "006",
+  UpdateState = '0097',
+  StateBrightness = '00c8',
+  Brightness = '0098', // 0-255
+  Scene = '0021',
+  Time = '001b',
+  RequestResponse = '0102',
+  RequestNoResponse = '0110',
+  RequestReadValue = '0103',
+  ButtonClick = '0006',
 }
 
 export class PlejdService {
@@ -57,9 +57,9 @@ export class PlejdService {
     this.dataCharacteristic = null;
     this.connectedPeripheral = null;
     this.sendQueue = [];
-    noble.on("stateChange", (state) => this.stateChange(state));
-    noble.on("warning", (msg: any) => {
-      this.log.debug("Noble warning: ", msg);
+    noble.on('stateChange', (state) => this.stateChange(state));
+    noble.on('warning', (msg: any) => {
+      this.log.debug('Noble warning: ', msg);
     });
   }
 
@@ -79,14 +79,14 @@ export class PlejdService {
     const dimming = brightness !== null;
     const command =
       isOn && dimming ? PlejdCommand.Brightness : PlejdCommand.UpdateState;
-    const on = isOn ? "01" : "00";
+    const on = isOn ? '01' : '00';
 
     let payload = Buffer.from(
-      identifier.toString(16).padStart(2, "0") +
+      identifier.toString(16).padStart(2, '0') +
         PlejdCommand.RequestNoResponse +
         command +
         on,
-      "hex",
+      'hex',
     );
 
     if (dimming) {
@@ -94,15 +94,14 @@ export class PlejdService {
       this.log.debug(`Dim value sent over BLE ${dim}`);
       payload = Buffer.concat([
         payload,
-        Buffer.from(dim.toString(16).padStart(4, "0"), "hex"),
+        Buffer.from(dim.toString(16).padStart(4, '0'), 'hex'),
       ]);
     }
 
     this.log.debug(
-      "UpdateState:",
-      this.config.cryptoKey,
-      this.addressBuffer,
-      payload,
+      'UpdateState:',
+      this.addressBuffer.toString('hex'),
+      payload.toString('hex'),
     );
     const data = plejdEncodeDecode(
       this.config.cryptoKey,
@@ -116,25 +115,25 @@ export class PlejdService {
   //   -------------- Private -------------- \\
   private stateChange = (state: string) => {
     if (state !== NOBLE_IS_POWER_ON) {
-      this.log.debug("stateChange | Stopped | " + state);
+      this.log.debug('stateChange | Stopped | ' + state);
       noble.stopScanning();
     }
-    this.log.debug("stateChange | Started | " + state);
+    this.log.debug('stateChange | Started | ' + state);
     this.startConnection();
   };
 
   private startConnection = () => {
-    if (this.connectedPeripheral === null || noble._state !== "poweredOn") {
+    if (this.connectedPeripheral === null || noble._state !== 'poweredOn') {
       noble.startScanning([PlejdCharacteristics.Service], false, (e) => {
         if (e) {
-          this.log.error("Unable to start scanning", e);
+          this.log.error('Unable to start scanning', e);
         }
       });
-      noble.once("discover", (peripheral) => this.discover(peripheral));
+      noble.once('discover', (peripheral) => this.discover(peripheral));
     } else {
       this.connectedPeripheral?.cancelConnect();
       this.connectedPeripheral.connect((e) => {
-        this.log.error("Unable to reconnect", e);
+        this.log.error('Unable to reconnect', e);
       });
     }
   };
@@ -166,7 +165,7 @@ export class PlejdService {
     this.connectedPeripheral = peripheral;
 
     this.addressBuffer = reverseBuffer(
-      Buffer.from(String(addr).replace(/:/g, ""), "hex"),
+      Buffer.from(String(addr).replace(/:/g, ''), 'hex'),
     );
 
     const services = [PlejdCharacteristics.Service];
@@ -192,8 +191,8 @@ export class PlejdService {
       },
     );
 
-    peripheral.once("disconnect", () => {
-      this.log.info("Peripheral disconnected");
+    peripheral.once('disconnect', () => {
+      this.log.info('Peripheral disconnected');
     });
   };
 
@@ -202,7 +201,7 @@ export class PlejdService {
     services: noble.Service[],
     characteristics: noble.Characteristic[],
   ) => {
-    characteristics.forEach((c) => this.log.info("Characteristic: ", c.uuid));
+    characteristics.forEach((c) => this.log.info('Characteristic: ', c.uuid));
     const authChar = characteristics.find(
       (char) => char.uuid === PlejdCharacteristics.Auth,
     );
@@ -219,7 +218,7 @@ export class PlejdService {
 
     if (!authChar || !lastDataChar || !pingChar) {
       this.log.error(
-        "Unable to extract characteristic during discovery",
+        'Unable to extract characteristic during discovery',
         authChar,
         lastDataChar,
         pingChar,
@@ -233,11 +232,11 @@ export class PlejdService {
 
       lastDataChar.subscribe((error) => {
         if (error) {
-          this.log.error("Error subscribing | " + error);
+          this.log.error('Error subscribing | ' + error);
           return;
         }
 
-        lastDataChar.on("data", (data, isNotification) =>
+        lastDataChar.on('data', (data, isNotification) =>
           this.gotData(data, isNotification),
         );
       });
@@ -250,13 +249,13 @@ export class PlejdService {
   ) => {
     authChar.write(Buffer.from([0x00]), false, (error: string) => {
       if (error) {
-        this.log.error("Error writing auth start | " + error);
+        this.log.error('Error writing auth start | ' + error);
         return;
       }
 
       authChar.read((error, data) => {
         if (error) {
-          this.log.error("Error reading auth | " + error);
+          this.log.error('Error reading auth | ' + error);
           return;
         }
 
@@ -265,7 +264,7 @@ export class PlejdService {
           false,
           (error) => {
             if (error) {
-              this.log.error("Error writing auth char | " + error);
+              this.log.error('Error writing auth char | ' + error);
               return;
             }
 
@@ -331,13 +330,13 @@ export class PlejdService {
 
     pingChar.write(ping, false, (error) => {
       if (error) {
-        this.log.error("Error sending ping | " + error);
+        this.log.error('Error sending ping | ' + error);
         return callback(false);
       }
 
       pingChar.read((error, pong) => {
         if (error) {
-          this.log.error("Error reading pong | " + error);
+          this.log.error('Error reading pong | ' + error);
           return callback(false);
         }
 
@@ -359,7 +358,7 @@ export class PlejdService {
     clearInterval(this.pingTimer);
 
     if (this.connectedPeripheral) {
-      this.log.info("Disconnecting peripheral");
+      this.log.info('Disconnecting peripheral');
       this.connectedPeripheral.disconnect();
     }
 
@@ -372,20 +371,20 @@ export class PlejdService {
     if (!this.addressBuffer || this.addressBuffer?.byteLength === 0) {
       return;
     }
-    this.log.debug("GotData:", this.config.cryptoKey, this.addressBuffer, data);
+    this.log.debug('GotData:', this.config.cryptoKey, this.addressBuffer, data);
     const decodedData = plejdEncodeDecode(
       this.config.cryptoKey,
       this.addressBuffer,
       data,
     );
     const id = parseInt(decodedData[0].toString(), 10);
-    const command = decodedData.toString("hex", 3, 5);
+    const command = decodedData.toString('hex', 3, 5);
 
-    const isOn = parseInt(decodedData.toString("hex", 5, 6), 10) === 1;
+    const isOn = parseInt(decodedData.toString('hex', 5, 6), 10) === 1;
 
     const commandType =
       Object.values(PlejdCommand).find((x) => x.toString() === command) ??
-      "Unknown";
+      'Unknown';
 
     const d = {
       id: id,
@@ -393,23 +392,23 @@ export class PlejdService {
       commandType: commandType,
       on: isOn,
       Notification: isNotification,
-      payload: decodedData.toString("hex"),
+      payload: decodedData.toString('hex'),
     };
-    this.log.debug("GotData", d);
+    this.log.debug('GotData', d);
 
     switch (command) {
       case PlejdCommand.Time: {
         const arg = parseInt(
-          reverseBuffer(decodedData.subarray(5, 9)).toString("hex"),
+          reverseBuffer(decodedData.subarray(5, 9)).toString('hex'),
           16,
         );
         const date = new Date(arg * 1000);
-        this.log.debug("Time sync: " + date.toString());
+        this.log.debug('Time sync: ' + date.toString());
         break;
       }
       case PlejdCommand.Brightness:
       case PlejdCommand.StateBrightness: {
-        const dim = parseInt(decodedData.toString("hex", 7, 8), 16);
+        const dim = parseInt(decodedData.toString('hex', 7, 8), 16);
 
         // Convert to Homebridge 1-100
         const converted = dim === 0 ? 1 : (100 / 255) * dim;
@@ -429,7 +428,7 @@ export class PlejdService {
         this.onUpdate(id, isOn);
         this.log.debug(
           `Unknown | command: ${command} | id: ${id} | ${decodedData.toString(
-            "hex",
+            'hex',
           )}`,
         );
       }
@@ -439,7 +438,7 @@ export class PlejdService {
   private plejdWrite = (dataChar: noble.Characteristic, data: Buffer) => {
     dataChar.write(data, false, (error) => {
       if (error) {
-        this.log.error("Error writing data | " + error);
+        this.log.error('Error writing data | ' + error);
         return;
       }
     });

@@ -1,13 +1,11 @@
-import axios from "axios";
-import EventEmitter from "events";
-import { Logger } from "homebridge";
-import { Site } from "./model/plejdSite.js";
+import { Logger } from 'homebridge';
+import { Site } from './model/plejdSite.js';
 
-const API_APP_ID = "zHtVqXt8k4yFyk2QGmgp48D9xZr2G94xWYnF4dak";
-const API_BASE_URL = "https://cloud.plejd.com/parse/";
-const API_LOGIN_URL = "login";
-const API_SITE_LIST_URL = "functions/getSiteList";
-const API_SITE_DETAILS_URL = "functions/getSiteById";
+const API_APP_ID = 'zHtVqXt8k4yFyk2QGmgp48D9xZr2G94xWYnF4dak';
+const API_BASE_URL = 'https://cloud.plejd.com/parse/';
+const API_LOGIN_URL = 'login';
+const API_SITE_LIST_URL = 'functions/getSiteList';
+const API_SITE_DETAILS_URL = 'functions/getSiteById';
 
 interface SitePermissionDto {
   siteId: string;
@@ -31,15 +29,12 @@ interface SiteDto {
   sitePermission: SitePermissionDto;
 }
 
-export default class PlejdRemoteApi extends EventEmitter {
+export default class PlejdRemoteApi {
   log: Logger;
   siteName: string;
   username: string;
   password: string;
   includeRoomsAsLights: boolean;
-
-  sessionToken?: string;
-  site?: Site;
 
   constructor(
     log: Logger,
@@ -48,7 +43,6 @@ export default class PlejdRemoteApi extends EventEmitter {
     password: string,
     includeRoomsAsLights: boolean,
   ) {
-    super();
     this.log = log;
     this.includeRoomsAsLights = includeRoomsAsLights;
     this.siteName = siteName;
@@ -56,143 +50,102 @@ export default class PlejdRemoteApi extends EventEmitter {
     this.password = password;
   }
 
-  getPlejdRemoteSite = (): Promise<Site> => {
-    return new Promise<Site>((resolve, reject) => {
-      this.login()
-        .then(() => {
-          this.getSites()
-            .then((site) => {
-              this.getSite(site)
-                .then((site) => {
-                  resolve(site);
-                })
-                .catch((e) => {
-                  this.log.error(`${e}`);
-                  reject(e);
-                });
-            })
-            .catch((e) => {
-              this.log.error(`${e}`);
-              reject(e);
-            });
-        })
-        .catch((e) => {
-          this.log.error(`${e}`);
-          reject(e);
-        });
-    });
-  };
+  async getPlejdRemoteSite(): Promise<Site> {
+    const token = await this.login();
+    const site = await this.getSites(token);
+    return await this.getSite(site, token);
+  }
 
-  private login = () => {
-    const instance = axios.create({
-      baseURL: API_BASE_URL,
+  private async login(): Promise<string> {
+    const response = await fetch(API_BASE_URL + API_LOGIN_URL, {
+      method: 'POST',
       headers: {
-        "X-Parse-Application-Id": API_APP_ID,
-        "Content-Type": "application/json",
+        'X-Parse-Application-Id': API_APP_ID,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        username: this.username,
+        password: this.password,
+      }),
+    });
+
+    if (!response.ok) {
+      if (response.status === 400) {
+        throw new Error(
+          'error: server returned status 400. probably invalid credentials, please verify.',
+        );
+      } else {
+        throw new Error('error: unable to retrieve session token response: ' + response.statusText);
+      }
+    }
+
+    const data = await response.json();
+    this.log.debug('plejd-api: got session token response');
+
+    if (!data.sessionToken) {
+      throw new Error('no session token received.');
+    }
+
+    return data.sessionToken;
+  }
+
+  private async getSites(token: string): Promise<SiteDto> {
+    this.log.debug('Sending POST to ' + API_BASE_URL + API_SITE_LIST_URL);
+
+    const response = await fetch(API_BASE_URL + API_SITE_LIST_URL, {
+      method: 'POST',
+      headers: {
+        'X-Parse-Application-Id': API_APP_ID,
+        'X-Parse-Session-Token': token,
+        'Content-Type': 'application/json',
       },
     });
 
-    return new Promise<string>((resolve, reject) => {
-      instance
-        .post(API_LOGIN_URL, {
-          username: this.username,
-          password: this.password,
-        })
-        .then((response) => {
-          this.log.debug("plejd-api: got session token response");
-          this.sessionToken = response.data.sessionToken;
+    if (!response.ok) {
+      throw new Error('plejd-api: unable to retrieve list of sites. error: ' + response.statusText);
+    }
 
-          if (!this.sessionToken) {
-            reject("no session token received.");
-            return;
-          }
+    const data = await response.json();
+    this.log.debug('plejd-api: got detailed sites response');
+    const site = data.result.find(
+      (x: any) => x.site.title === this.siteName,
+    );
 
-          resolve(response.data.sessionToken);
-        })
-        .catch((error) => {
-          if (error.response.status === 400) {
-            reject(
-              "error: server returned status 400. probably invalid credentials, please verify.",
-            );
-          } else {
-            reject(
-              "error: unable to retrieve session token response: " + error,
-            );
-          }
-        });
-    });
-  };
+    if (!site) {
+      throw new Error('failed to find a site named ' + this.siteName);
+    }
 
-  private getSites = () => {
-    const instance = axios.create({
-      baseURL: API_BASE_URL,
+    return site as SiteDto;
+  }
+
+  private async getSite(site: SiteDto, token: string): Promise<Site> {
+    this.log.debug('Sending POST to ' + API_BASE_URL + API_SITE_DETAILS_URL);
+
+    const response = await fetch(API_BASE_URL + API_SITE_DETAILS_URL, {
+      method: 'POST',
       headers: {
-        "X-Parse-Application-Id": API_APP_ID,
-        "X-Parse-Session-Token": this.sessionToken,
-        "Content-Type": "application/json",
+        'X-Parse-Application-Id': API_APP_ID,
+        'X-Parse-Session-Token': token,
+        'Content-Type': 'application/json',
       },
+      body: JSON.stringify({ siteId: site.site.siteId }),
     });
 
-    return new Promise<SiteDto>((resolve, reject) => {
-      this.log.debug("Sending POST to " + API_BASE_URL + API_SITE_LIST_URL);
+    if (!response.ok) {
+      throw new Error('plejd-api: unable to retrieve the crypto key. error: ' + response.statusText);
+    }
 
-      instance
-        .post(API_SITE_LIST_URL)
-        .then((response) => {
-          this.log.debug("plejd-api: got detailed sites response");
-          const site = response.data.result.find(
-            (x: any) => x.site.title === this.siteName,
-          );
+    const data = await response.json();
+    this.log.debug('plejd-api: got site details response');
+    if (data.result.length === 0) {
+      throw new Error('No devices found');
+    }
 
-          if (!site) {
-            reject("failed to find a site named " + this.siteName);
-            return;
-          }
-
-          resolve(site as SiteDto);
-        })
-        .catch((error) => {
-          return reject(
-            "plejd-api: unable to retrieve list of sites. error: " + error,
-          );
-        });
-    });
-  };
-
-  private getSite = (site: SiteDto) => {
-    const instance = axios.create({
-      baseURL: API_BASE_URL,
-      headers: {
-        "X-Parse-Application-Id": API_APP_ID,
-        "X-Parse-Session-Token": this.sessionToken,
-        "Content-Type": "application/json",
-      },
-    });
-
-    return new Promise<Site>((resolve, reject) => {
-      this.log.debug("Sending POST to " + API_BASE_URL + API_SITE_DETAILS_URL);
-
-      instance
-        .post(API_SITE_DETAILS_URL, { siteId: site.site.siteId })
-        .then((response) => {
-          this.log.debug("plejd-api: got site details response");
-          if (response.data.result.length === 0) {
-            reject("No devices fount");
-            return;
-          }
-
-          this.site = response.data.result[0] as Site;
-          if (this.site) {
-            resolve(this.site!);
-          } else {
-            reject("No Crypto has been retrieved yet");
-          }
-        })
-        .catch((error) => {
-          return reject(
-            "plejd-api: unable to retrieve the crypto key. error: " + error,
-          );
-        });
-    });
-  };
+    const res = data.result[0] as Site;
+    if (res) {
+      return res;
+    } else {
+      throw new Error('No Crypto has been retrieved yet');
+    }
+  }
 }
