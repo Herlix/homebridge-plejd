@@ -1,7 +1,7 @@
 import { Service, PlatformAccessory, CharacteristicValue } from 'homebridge';
 import { Device } from './model/device.js';
 
-import { PlejdPlatform } from './plejdPlatform.js';
+import { PlejdHbPlatform } from './PlejdHbPlatform.js';
 import { PLATFORM_NAME } from './settings.js';
 
 interface DeviceState {
@@ -14,12 +14,12 @@ interface DeviceState {
  * An instance of this class is created for each accessory your platform registers
  * Each accessory may expose multiple services of different service types.
  */
-export class PlejdPlatformAccessoryHandler {
+export class PlejdHbAccessory {
   private service: Service;
   private state: DeviceState;
 
   constructor(
-    private readonly platform: PlejdPlatform,
+    private readonly platform: PlejdHbPlatform,
     private readonly accessory: PlatformAccessory,
     public readonly device: Device,
   ) {
@@ -74,6 +74,7 @@ export class PlejdPlatformAccessoryHandler {
   }
 
   updateState = (isOn: boolean, brightness?: number) => {
+    this.platform.log.info(`Got trigger on ${this.device.name} | to ${isOn ? 'On' : 'off'} | brightness: ${brightness}`);
     this.state.isOn = isOn;
     this.platform.log.debug('updateState | Sending isOn', isOn);
     this.service

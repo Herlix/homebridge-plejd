@@ -1,3 +1,7 @@
+#### 1.3.6 (2024-06-21)
+
+Clear out dependencies & refactor
+
 #### 1.3.6 (2024-06-20)
 
 Updated plejd ble characteristict

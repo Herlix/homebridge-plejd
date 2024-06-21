@@ -371,7 +371,7 @@ export class PlejdService {
     if (!this.addressBuffer || this.addressBuffer?.byteLength === 0) {
       return;
     }
-    this.log.debug('GotData:', this.config.cryptoKey, this.addressBuffer, data);
+
     const decodedData = plejdEncodeDecode(
       this.config.cryptoKey,
       this.addressBuffer,

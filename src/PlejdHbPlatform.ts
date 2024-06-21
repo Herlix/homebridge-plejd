@@ -14,14 +14,14 @@ import {
   PLEJD_LIGHTS,
   PLUGIN_NAME,
 } from './settings.js';
-import { PlejdPlatformAccessoryHandler } from './plejdPlatformAccessory.js';
+import { PlejdHbAccessory } from './PlejdHbAccessory.js';
 import { UserInputConfig } from './model/userInputConfig.js';
 import { Device } from './model/device.js';
 import { PlejdService } from './plejdService.js';
 import PlejdRemoteApi from './plejdApi.js';
 import { Site } from './model/plejdSite.js';
 
-export class PlejdPlatform implements DynamicPlatformPlugin {
+export class PlejdHbPlatform implements DynamicPlatformPlugin {
   public readonly Service: typeof Service;
   public readonly Characteristic: typeof Characteristic;
 
@@ -31,7 +31,7 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
   // this is used to track restored cached accessories
   public readonly accessories: PlatformAccessory[] = [];
 
-  public readonly plejdHandlers: PlejdPlatformAccessoryHandler[] = [];
+  public readonly plejdHandlers: PlejdHbAccessory[] = [];
 
   constructor(
     public readonly log: Logger,
@@ -51,7 +51,6 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
       this.log.info(
         'Any devices added manually will update the downloaded devices',
       );
-
       const pApi = new PlejdRemoteApi(
         this.log,
         this.config.site,
@@ -208,7 +207,7 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
 
       if (existingAccessory) {
         this.plejdHandlers.push(
-          new PlejdPlatformAccessoryHandler(this, existingAccessory, device),
+          new PlejdHbAccessory(this, existingAccessory, device),
         );
       } else {
         this.addNewDevice(device);
@@ -230,7 +229,7 @@ export class PlejdPlatform implements DynamicPlatformPlugin {
     accessory.context.device = device;
     // See above.
     this.plejdHandlers.push(
-      new PlejdPlatformAccessoryHandler(this, accessory, device),
+      new PlejdHbAccessory(this, accessory, device),
     );
 
     // link the accessory to your platform
