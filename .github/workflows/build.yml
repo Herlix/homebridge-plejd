@@ -62,7 +62,8 @@ jobs:
       - name: Install the package with a clean slate.
         run: npm ci
 
-      - name: Publish the package to NPM.
-        run: npm publish
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.npm_token }}
+      - name: Run linting.
+        run: npm lint
+
+      - name: Run Build.
+        run: npm lint
