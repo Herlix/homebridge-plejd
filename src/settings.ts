@@ -8,7 +8,8 @@ export const PLATFORM_NAME = 'Plejd';
  */
 export const PLUGIN_NAME = 'homebridge-plejd';
 
-export const PLEJD_WRITE_TIMEOUT = 100;
+export const PLEJD_WRITE_TIMEOUT = 50;
+export const PLEJD_PING_TIMEOUT = 180_000;
 /**
  * Lights and switches from Plejd
  */

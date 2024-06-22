@@ -23,10 +23,6 @@ export class PlejdHbAccessory {
     private readonly accessory: PlatformAccessory,
     public readonly device: Device,
   ) {
-    platform.log.debug(
-      `Adding handler for a ${this.device.model} with id ${this.device.identifier}`,
-    );
-
     this.state = {
       brightness: accessory.context.brightness ?? 100,
       isOn: accessory.context.isOn ?? false,
@@ -74,71 +70,36 @@ export class PlejdHbAccessory {
   }
 
   updateState = (isOn: boolean, brightness?: number) => {
-    this.platform.log.info(`Got trigger on ${this.device.name} | to ${isOn ? 'On' : 'off'} | brightness: ${brightness}`);
+    this.platform.log.debug(`Updating Homekit state from ${this.device.name} device state`);
     this.state.isOn = isOn;
-    this.platform.log.debug('updateState | Sending isOn', isOn);
+
     this.service
       .getCharacteristic(this.platform.Characteristic.On)
       .updateValue(isOn);
 
     if (brightness) {
       this.state.brightness = Math.round(brightness);
-      this.platform.log.debug(
-        'update state | Sending brightness',
-        this.state.brightness,
-      );
       this.service
         .getCharacteristic(this.platform.Characteristic.Brightness)
         .updateValue(this.state.brightness);
     }
 
     this.accessory.context = this.state;
-    this.platform.log.debug(`State updated | ${JSON.stringify(this.state)}`);
   };
 
-  private setOn = async (value: CharacteristicValue) => {
-    const newVal = value as boolean;
-    this.platform.log.info(
-      `Updating state | ${this.device.name} | to ${
-        newVal ? 'On' : 'off'
-      } | from ${this.state.isOn ? 'On' : 'Off'}`,
-    );
-    this.updateState(newVal, this.state.brightness);
-    this.platform.plejdService?.updateState(
-      this.device.identifier,
-      newVal,
-      null,
-    );
-  };
+  private setOn = (value: CharacteristicValue) => this.platform.plejdService?.updateState(
+    this.device.identifier,
+    value as boolean,
+    null,
+  );
 
-  private getOn = async (): Promise<CharacteristicValue> => {
-    this.platform.log.debug(
-      'Get Characteristic On',
-      this.device.name,
-      this.state.isOn,
-    );
-    return this.state.isOn;
-  };
+  private getOn = (): CharacteristicValue => this.state.isOn;
 
-  private setBrightness = async (value: CharacteristicValue) => {
-    const newVal = value as number; // Number between 1-100
-    this.platform.log.debug(
-      `Updating brightness | ${this.device.name} | to ${newVal} | from ${this.state.brightness}`,
-    );
-    this.updateState(this.state.isOn, newVal);
-    this.platform.plejdService?.updateState(
-      this.device.identifier,
-      this.state.isOn,
-      newVal,
-    );
-  };
+  private setBrightness = (value: CharacteristicValue) => this.platform.plejdService?.updateState(
+    this.device.identifier,
+    this.state.isOn,
+    value as number,
+  );
 
-  private getBrightness = async (): Promise<CharacteristicValue> => {
-    this.platform.log.debug(
-      'Get Characteristic Brightness',
-      this.device.name,
-      this.state.brightness,
-    );
-    return this.state.brightness;
-  };
+  private getBrightness = (): CharacteristicValue => this.state.brightness;
 }

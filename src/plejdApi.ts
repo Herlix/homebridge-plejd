@@ -80,8 +80,6 @@ export default class PlejdRemoteApi {
     }
 
     const data = await response.json();
-    this.log.debug('plejd-api: got session token response');
-
     if (!data.sessionToken) {
       throw new Error('no session token received.');
     }
@@ -90,8 +88,6 @@ export default class PlejdRemoteApi {
   }
 
   private async getSites(token: string): Promise<SiteDto> {
-    this.log.debug('Sending POST to ' + API_BASE_URL + API_SITE_LIST_URL);
-
     const response = await fetch(API_BASE_URL + API_SITE_LIST_URL, {
       method: 'POST',
       headers: {
@@ -106,9 +102,8 @@ export default class PlejdRemoteApi {
     }
 
     const data = await response.json();
-    this.log.debug('plejd-api: got detailed sites response');
     const site = data.result.find(
-      (x: any) => x.site.title === this.siteName,
+      (x: SiteDto) => x.site.title === this.siteName,
     );
 
     if (!site) {
@@ -119,8 +114,6 @@ export default class PlejdRemoteApi {
   }
 
   private async getSite(site: SiteDto, token: string): Promise<Site> {
-    this.log.debug('Sending POST to ' + API_BASE_URL + API_SITE_DETAILS_URL);
-
     const response = await fetch(API_BASE_URL + API_SITE_DETAILS_URL, {
       method: 'POST',
       headers: {
@@ -136,7 +129,6 @@ export default class PlejdRemoteApi {
     }
 
     const data = await response.json();
-    this.log.debug('plejd-api: got site details response');
     if (data.result.length === 0) {
       throw new Error('No devices found');
     }

@@ -31,26 +31,23 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
   // this is used to track restored cached accessories
   public readonly accessories: PlatformAccessory[] = [];
 
-  public readonly plejdHandlers: PlejdHbAccessory[] = [];
+  public readonly plejdHbAccessories: PlejdHbAccessory[] = [];
 
   constructor(
     public readonly log: Logger,
     public readonly config: PlatformConfig,
     public readonly homebridgeApi: API,
   ) {
-    this.log.debug('Finished initializing platform:', this.config.platform);
-
     homebridgeApi.on('didFinishLaunching', this.configurePlejd);
     this.Characteristic = homebridgeApi.hap.Characteristic;
     this.Service = homebridgeApi.hap.Service;
   }
 
-  configurePlejd = () => {
+  configurePlejd = async () => {
     if (this.config.password && this.config.site && this.config.username) {
-      this.log.info('Using login information to fetch devices & crypto key');
       this.log.info(
-        'Any devices added manually will update the downloaded devices',
-      );
+        'Using login information to fetch devices & crypto key\n' +
+        'Any devices added manually will override the remote site information');
       const pApi = new PlejdRemoteApi(
         this.log,
         this.config.site,
@@ -58,10 +55,8 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
         this.config.password,
         true,
       );
-      pApi
-        .getPlejdRemoteSite()
-        .then((site) => this.configureDevices(this.log, this.config, site))
-        .catch((e) => this.log.error(`Plejd remote access error: ${e}`));
+      const site = await pApi.getPlejdRemoteSite();
+      this.configureDevices(this.log, this.config, site);
     } else if (
       this.config.crypto_key &&
       this.config.devices &&
@@ -80,7 +75,6 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
     const devices = (config.devices as Device[]) || [];
 
     if (site) {
-      this.log.info('Using remote site information for:', site.site.title);
       config.crypto_key = site.plejdMesh.cryptoKey;
       const items: Device[] = [];
       // Extract devices
@@ -159,8 +153,8 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
       cryptoKey: cryptoKey,
     };
 
-    log.info('Plejd Crypto Key:', config.crypto_key);
-    log.info(
+    log.debug('Plejd Crypto Key:', config.crypto_key);
+    log.debug(
       'Plejd Devices connected to HomeKit:',
       this.userInputConfig.devices,
     );
@@ -179,7 +173,6 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
    * It should be used to setup event handlers for characteristics and update respective values.
    */
   configureAccessory = (accessory: PlatformAccessory) => {
-    this.log.info('Loading accessory from cache | ', accessory.displayName);
     this.accessories.push(accessory);
   };
 
@@ -206,7 +199,7 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
       );
 
       if (existingAccessory) {
-        this.plejdHandlers.push(
+        this.plejdHbAccessories.push(
           new PlejdHbAccessory(this, existingAccessory, device),
         );
       } else {
@@ -217,7 +210,6 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
 
   addNewDevice = (device: Device) => {
     let name = device.name;
-    this.log.info('Adding new accessory |', name);
     if (device.room) {
       name = device.room + ' - ' + name;
     }
@@ -228,7 +220,7 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
     );
     accessory.context.device = device;
     // See above.
-    this.plejdHandlers.push(
+    this.plejdHbAccessories.push(
       new PlejdHbAccessory(this, accessory, device),
     );
 
@@ -256,10 +248,10 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
     const device = this.userInputConfig!.devices.find(
       (dev) => dev.identifier === identifier,
     );
-    const plejdHandler = this.plejdHandlers.find(
+    const plejdHbAccessory = this.plejdHbAccessories.find(
       (dev) => dev.device.identifier === identifier,
     );
-    if (existingAccessory && device && plejdHandler) {
+    if (existingAccessory && device && plejdHbAccessory) {
       if (device.isDimmer) {
         const ser = existingAccessory.getService(this.Service.Lightbulb);
 
@@ -287,16 +279,11 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
           ?.updateValue(isOn);
       }
 
-      plejdHandler.updateState(isOn, brightness);
+      plejdHbAccessory.updateState(isOn, brightness);
     } else {
       if (device) {
         this.addNewDevice(device);
         this.onPlejdUpdates(identifier, isOn, brightness);
-      } else {
-        this.log.info(
-          'Unable find HomKit device associated with incoming Plejd update |',
-          device,
-        );
       }
     }
   };
