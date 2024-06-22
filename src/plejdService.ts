@@ -25,7 +25,7 @@ enum PlejdCharacteristics {
 }
 
 enum PlejdCommand {
-  UpdateState = '0097',
+  OnOffState = '0097',
   StateBrightness = '00c8',
   Brightness = '0098', // 0-255
   Scene = '0021',
@@ -59,10 +59,7 @@ export class PlejdService {
     this.sendQueue = [];
 
     noble.on('stateChange', async (state) => {
-      if (state === NOBLE_IS_POWER_ON) {
-        this.log.debug('Scanning for Plejd devices');
-        await noble.startScanningAsync([PlejdCharacteristics.Service], false);
-      }
+      await this.startScanning(state);
     });
 
     noble.on('warning', (msg: string) => {
@@ -72,57 +69,57 @@ export class PlejdService {
     noble.on('discover', async (peripheral) => await this.onDiscover(peripheral));
   }
 
-  /// Brightness should be between 1-100
-  updateState = (
+  /**
+  *
+  * Update the state of a device
+  *
+  * @param identifier: The device identifier
+  * @param isOn: The new state of the device
+  * @param brightness: The new brightness of the device between 0-100
+  */
+  updateState = async (
     identifier: number,
     isOn: boolean,
     brightness: number | null,
   ) => {
-    if (!this.dataCharacteristic || !this.addressBuffer) {
-      this.log.warn(
-        `Atempting to update state, characteristic (${this.dataCharacteristic}) or address (${this.addressBuffer}) not found`,
-      );
+    if (!this.connectedPeripheral || !this.dataCharacteristic || !this.addressBuffer) {
+      await this.startScanning();
       return;
     }
 
-    const dimming = brightness !== null;
-    const command =
-      isOn && dimming ? PlejdCommand.Brightness : PlejdCommand.UpdateState;
-
-    let payload = Buffer.from(
-      identifier.toString(16).padStart(2, '0') +
-        PlejdCommand.RequestNoResponse +
-        command +
-        isOn ? '00' : '01',
-      'hex',
+    const payload = Buffer.from(!brightness || brightness === 0 ?
+      (
+        identifier.toString(16).padStart(2, '0') +
+          PlejdCommand.RequestNoResponse +
+          PlejdCommand.OnOffState +
+          (isOn ? '01' : '00')
+      ) :
+      (
+        identifier.toString(16).padStart(2, '0') +
+          PlejdCommand.RequestNoResponse +
+          PlejdCommand.Brightness +
+          '01' +
+          Math.round(2.55 * brightness).toString(16).padStart(4, '0')
+      ),
+    'hex',
     );
 
-    if (dimming) {
-      const dim = Math.round(2.55 * brightness); // Convert to Plejd 0-255
-      payload = Buffer.concat([
-        payload,
-        Buffer.from(dim.toString(16).padStart(4, '0'), 'hex'),
-      ]);
-    }
-
-    this.log.debug(
-      `BLE command sent to ${identifier} | ${isOn ? 'ON' : 'OFF'}${ brightness !== null ? ' | Brightness: ' + brightness : ''}`,
-    );
+    this.log.debug(`payload: ${payload.toString('hex')} ${payload.length}`);
     const data = plejdEncodeDecode(
       this.config.cryptoKey,
       this.addressBuffer,
       payload,
     );
 
-    this.sendQueue.push(data);
+    this.sendQueue.unshift(data);
   };
 
   //   -------------- Private -------------- \\
   private onDiscover = async (peripheral: noble.Peripheral) => {
-    await noble.stopScanningAsync();
     this.log.debug(
       `Discovered | ${peripheral.advertisement.localName} | addr: ${peripheral.address} | RSSI: ${peripheral.rssi} dB`,
     );
+    await noble.stopScanningAsync();
 
     try {
       await peripheral.connectAsync();
@@ -163,9 +160,9 @@ export class PlejdService {
       PlejdCharacteristics.Auth,
       PlejdCharacteristics.Ping,
     ];
+
     try {
-      const { characteristics } = await peripheral.discoverSomeServicesAndCharacteristicsAsync(services, characteristicIds);
-      return characteristics;
+      return (await peripheral.discoverSomeServicesAndCharacteristicsAsync(services, characteristicIds)).characteristics;
     } catch (error) {
       this.log.error(
         `Failed to setup device | ${peripheral.advertisement.localName} (addr: ${addr}) - err: ${error}`,
@@ -201,19 +198,8 @@ export class PlejdService {
       );
       return;
     }
-
-    // Authenticate
-    await authChar.writeAsync(Buffer.from([0x00]), false);
-    const data = await authChar.readAsync();
-    await authChar.writeAsync(plejdCharResp(this.config.cryptoKey, data), false);
-
-    // Setup communication
-    this.startPlejdPing(pingChar);
-    this.startPlejdQueue();
-    await lastDataChar.subscribeAsync();
-    lastDataChar.on('data', (data, isNotification) =>
-      this.handleNotification(data, isNotification),
-    );
+    await this.authenticate(authChar);
+    await this.setupCommunication(pingChar, lastDataChar);
   };
 
   private startPlejdQueue = () => {
@@ -229,7 +215,10 @@ export class PlejdService {
   private writePlejdQueueItems = async () => {
     const data = this.sendQueue.pop();
 
-    if (this.dataCharacteristic && data) {
+    if (this.connectedPeripheral && this.dataCharacteristic && data) {
+      this.log.debug(
+        `BLE command sent to ${this.addressBuffer?.toString() ?? 'Unknown'} | ${data.length} bytes | ${data.toString('hex')}`,
+      );
       await this.dataCharacteristic.writeAsync(data, false);
       this.queueTimer = setTimeout(
         () => this.startPlejdQueue(),
@@ -254,9 +243,7 @@ export class PlejdService {
             await this.plejdPing(pingChar);
           } catch (error) {
             this.log.warn('Ping failed, device disconnected, will retry to connect to mesh: ', error);
-            if (noble._state === NOBLE_IS_POWER_ON) {
-              await noble.startScanningAsync([PlejdCharacteristics.Service], false);
-            }
+            await this.startScanning();
           }
         }
       },
@@ -324,7 +311,7 @@ export class PlejdService {
         break;
       }
       case PlejdCommand.Scene:
-      case PlejdCommand.UpdateState:
+      case PlejdCommand.OnOffState:
       case PlejdCommand.ButtonClick:
       case PlejdCommand.RequestResponse:
       case PlejdCommand.RequestNoResponse:
@@ -341,5 +328,34 @@ export class PlejdService {
         );
       }
     }
+  };
+
+  private startScanning = async (state: string | undefined = undefined) => {
+    if (!state){
+      state = noble._state;
+    }
+    if (state === NOBLE_IS_POWER_ON) {
+      // this.log.debug('Stopping scan for Plejd devices');
+      // await noble.stopScanningAsync();
+      this.log.debug('Scanning for Plejd devices');
+      await noble.startScanningAsync([PlejdCharacteristics.Service], false);
+    }
+  };
+
+  private setupCommunication = async (pingChar: noble.Characteristic, lastDataChar: noble.Characteristic) => {
+    this.startPlejdPing(pingChar);
+    this.startPlejdQueue();
+    await lastDataChar.subscribeAsync();
+    lastDataChar.on('data', (data, isNotification) => this.handleNotification(data, isNotification));
+
+    setTimeout(async () => {
+      await this.updateState(14, true, 65);
+    }, 5000);
+  };
+
+  private authenticate = async (authChar: noble.Characteristic) => {
+    await authChar.writeAsync(Buffer.from([0x00]), false);
+    const data = await authChar.readAsync();
+    await authChar.writeAsync(plejdCharResp(this.config.cryptoKey, data), false);
   };
 }

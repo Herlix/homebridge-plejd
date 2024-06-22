@@ -87,7 +87,7 @@ export class PlejdHbAccessory {
     this.accessory.context = this.state;
   };
 
-  private setOn = (value: CharacteristicValue) => this.platform.plejdService?.updateState(
+  private setOn = async (value: CharacteristicValue) => await this.platform.plejdService?.updateState(
     this.device.identifier,
     value as boolean,
     null,
@@ -95,7 +95,7 @@ export class PlejdHbAccessory {
 
   private getOn = (): CharacteristicValue => this.state.isOn;
 
-  private setBrightness = (value: CharacteristicValue) => this.platform.plejdService?.updateState(
+  private setBrightness = async (value: CharacteristicValue) => await this.platform.plejdService?.updateState(
     this.device.identifier,
     this.state.isOn,
     value as number,

@@ -2,7 +2,7 @@
   "pluginAlias": "Plejd",
   "pluginType": "platform",
   "headerDisplay": "Plejd Setup",
-  "footerDisplay": "Either use your login or add devices and crypto key manually.",
+  "footerDisplay": "Either use your login or add devices and crypto key manually. Crypto key and device info is printed as debug logs at startup",
   "singular": true,
   "schema": {
     "username": {
