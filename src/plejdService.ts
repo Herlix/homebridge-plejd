@@ -9,6 +9,7 @@ import {
 import { randomBytes } from 'crypto';
 import noble from '@abandonware/noble';
 import { PLEJD_PING_TIMEOUT, PLEJD_WRITE_TIMEOUT } from './settings.js';
+import { delay } from './utils.js';
 
 const NOBLE_IS_POWER_ON = 'poweredOn';
 
@@ -40,8 +41,6 @@ export class PlejdService {
   private connectedPeripheral: noble.Peripheral | null;
   private addressBuffer: Buffer | null;
   private dataCharacteristic: noble.Characteristic | null;
-  private pingTimer: NodeJS.Timeout | undefined;
-  private queueTimer: NodeJS.Timeout | undefined;
   private sendQueue: Buffer[];
 
   constructor(
@@ -104,14 +103,13 @@ export class PlejdService {
     'hex',
     );
 
-    this.log.debug(`payload: ${payload.toString('hex')} ${payload.length}`);
     const data = plejdEncodeDecode(
       this.config.cryptoKey,
       this.addressBuffer,
       payload,
     );
 
-    this.sendQueue.unshift(data);
+    this.sendToDeviceQueued(data);
   };
 
   //   -------------- Private -------------- \\
@@ -130,13 +128,21 @@ export class PlejdService {
       return;
     }
 
-    peripheral.once('disconnect', () => {
+    this.connectedPeripheral = peripheral;
+
+    peripheral.once('disconnect', async () => {
+      this.connectedPeripheral?.removeAllListeners();
+      this.connectedPeripheral = null;
+      this.addressBuffer = null;
+      this.dataCharacteristic = null;
       this.log.info('Disconnected from mesh');
+      await this.startScanning();
     });
 
     const characteristics = await this.discoverCaracteristics(peripheral);
     if (!characteristics) {
       this.log.error('Failed to discover characteristics, disconnecting...');
+      await peripheral.disconnectAsync();
       return;
     }
     await this.setupDevice(peripheral, characteristics);
@@ -148,7 +154,6 @@ export class PlejdService {
       `Connected to mesh | ${peripheral.advertisement.localName} (addr: ${addr})`,
     );
 
-    this.connectedPeripheral = peripheral;
     this.addressBuffer = reverseBuffer(
       Buffer.from(String(addr).replace(/:/g, ''), 'hex'),
     );
@@ -202,68 +207,46 @@ export class PlejdService {
     await this.setupCommunication(pingChar, lastDataChar);
   };
 
-  private startPlejdQueue = () => {
-    if (this.queueTimer) {
-      clearInterval(this.queueTimer);
+  private sendToDeviceQueued = async (data: Buffer) => {
+    this.sendQueue.unshift(data);
+    if (this.sendQueue.length === 1) {
+      await this.handleQueuedMessages();
     }
-    this.queueTimer = setTimeout(
-      async () => await this.writePlejdQueueItems(),
-      PLEJD_WRITE_TIMEOUT,
-    );
   };
 
-  private writePlejdQueueItems = async () => {
-    const data = this.sendQueue.pop();
-
-    if (this.connectedPeripheral && this.dataCharacteristic && data) {
+  private handleQueuedMessages = async () => {
+    while (this.sendQueue.length > 0 && this.connectedPeripheral && this.dataCharacteristic) {
+      const data = this.sendQueue.pop();
+      if (!data) {
+        return;
+      }
       this.log.debug(
-        `BLE command sent to ${this.addressBuffer?.toString() ?? 'Unknown'} | ${data.length} bytes | ${data.toString('hex')}`,
+        `BLE command sent to ${this.addressBuffer?.toString('hex') ?? 'Unknown'} | ${data.length} bytes | ${data.toString('hex')}`,
       );
       await this.dataCharacteristic.writeAsync(data, false);
-      this.queueTimer = setTimeout(
-        () => this.startPlejdQueue(),
-        PLEJD_WRITE_TIMEOUT / 2,
-      );
-    } else {
-      this.queueTimer = setTimeout(
-        () => this.startPlejdQueue(),
-        PLEJD_WRITE_TIMEOUT,
-      );
+      await delay(PLEJD_WRITE_TIMEOUT);
     }
   };
 
-  private startPlejdPing = (pingChar: noble.Characteristic) => {
-    if (this.pingTimer) {
-      clearInterval(this.pingTimer);
-    }
-    this.pingTimer = setInterval(
-      async () => {
-        if (this.connectedPeripheral) {
-          try {
-            await this.plejdPing(pingChar);
-          } catch (error) {
-            this.log.warn('Ping failed, device disconnected, will retry to connect to mesh: ', error);
-            await this.startScanning();
-          }
+  private startPlejdPing = async (pingChar: noble.Characteristic) => {
+    while (this.connectedPeripheral && pingChar) {
+      try {
+        const ping = randomBytes(1);
+        pingChar.writeAsync(ping, false);
+        const pong = await pingChar.readAsync();
+        if (((ping[0] + 1) & 0xff) !== pong[0]) {
+          this.log.error('Ping pong communication failed, missing pong response');
         }
-      },
-      PLEJD_PING_TIMEOUT,
-    );
-  };
-
-  private plejdPing = async (
-    pingChar: noble.Characteristic,
-  ) => {
-    const ping = randomBytes(1);
-    pingChar.writeAsync(ping, false);
-    const pong = await pingChar.readAsync();
-    if (((ping[0] + 1) & 0xff) !== pong[0]) {
-      throw new Error('Ping pong communication failed, missing pong response');
+        await delay(PLEJD_PING_TIMEOUT);
+      } catch (error) {
+        this.log.warn('Ping failed, device disconnected, will retry to connect to mesh: ', error);
+        await this.startScanning();
+      }
     }
   };
 
-  private handleNotification = (data: Buffer, isNotification: boolean) => {
-    if (!this.addressBuffer || this.addressBuffer?.byteLength === 0) {
+  private handleNotification = async (data: Buffer, isNotification: boolean) => {
+    if (!this.connectedPeripheral || !this.addressBuffer || this.addressBuffer?.byteLength === 0) {
       return;
     }
 
@@ -335,8 +318,6 @@ export class PlejdService {
       state = noble._state;
     }
     if (state === NOBLE_IS_POWER_ON) {
-      // this.log.debug('Stopping scan for Plejd devices');
-      // await noble.stopScanningAsync();
       this.log.debug('Scanning for Plejd devices');
       await noble.startScanningAsync([PlejdCharacteristics.Service], false);
     }
@@ -344,13 +325,14 @@ export class PlejdService {
 
   private setupCommunication = async (pingChar: noble.Characteristic, lastDataChar: noble.Characteristic) => {
     this.startPlejdPing(pingChar);
-    this.startPlejdQueue();
     await lastDataChar.subscribeAsync();
-    lastDataChar.on('data', (data, isNotification) => this.handleNotification(data, isNotification));
-
-    setTimeout(async () => {
-      await this.updateState(14, true, 65);
-    }, 5000);
+    lastDataChar.on('data', async (data, isNotification) => {
+      if(!lastDataChar || !this.connectedPeripheral) {
+        await lastDataChar.unsubscribeAsync();
+        return;
+      }
+      await this.handleNotification(data, isNotification);
+    });
   };
 
   private authenticate = async (authChar: noble.Characteristic) => {

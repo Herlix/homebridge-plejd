@@ -209,11 +209,6 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
   };
 
   addNewDevice = (device: Device) => {
-    let name = device.name;
-    if (device.room) {
-      name = device.room + ' - ' + name;
-    }
-
     const accessory = new this.homebridgeApi.platformAccessory(
       device.name,
       device.uuid,
