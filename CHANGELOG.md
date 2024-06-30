@@ -1,3 +1,7 @@
+#### 1.4.1 (2024-06-30)
+
+Bug fix: Re-scan when unable to connect to Plejd device
+
 #### 1.4.0 (2024-06-21)
 
 Move to async/await paradigm and fix flickering ouccuring when updating device brightness from home assistant and other sources.

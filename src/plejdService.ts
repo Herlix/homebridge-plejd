@@ -65,42 +65,48 @@ export class PlejdService {
       this.log.warn('Noble warning: ', msg);
     });
 
-    noble.on('discover', async (peripheral) => await this.onDiscover(peripheral));
+    noble.on(
+      'discover',
+      async (peripheral) => await this.onDiscover(peripheral),
+    );
   }
 
   /**
-  *
-  * Update the state of a device
-  *
-  * @param identifier: The device identifier
-  * @param isOn: The new state of the device
-  * @param brightness: The new brightness of the device between 0-100
-  */
+   *
+   * Update the state of a device
+   *
+   * @param identifier: The device identifier
+   * @param isOn: The new state of the device
+   * @param brightness: The new brightness of the device between 0-100
+   */
   updateState = async (
     identifier: number,
     isOn: boolean,
     brightness: number | null,
   ) => {
-    if (!this.connectedPeripheral || !this.dataCharacteristic || !this.addressBuffer) {
+    if (
+      !this.connectedPeripheral ||
+      !this.dataCharacteristic ||
+      !this.addressBuffer
+    ) {
       await this.startScanning();
       return;
     }
 
-    const payload = Buffer.from(!brightness || brightness === 0 ?
-      (
-        identifier.toString(16).padStart(2, '0') +
-          PlejdCommand.RequestNoResponse +
-          PlejdCommand.OnOffState +
-          (isOn ? '01' : '00')
-      ) :
-      (
-        identifier.toString(16).padStart(2, '0') +
-          PlejdCommand.RequestNoResponse +
-          PlejdCommand.Brightness +
-          '01' +
-          Math.round(2.55 * brightness).toString(16).padStart(4, '0')
-      ),
-    'hex',
+    const payload = Buffer.from(
+      !brightness || brightness === 0
+        ? identifier.toString(16).padStart(2, '0') +
+            PlejdCommand.RequestNoResponse +
+            PlejdCommand.OnOffState +
+            (isOn ? '01' : '00')
+        : identifier.toString(16).padStart(2, '0') +
+            PlejdCommand.RequestNoResponse +
+            PlejdCommand.Brightness +
+            '01' +
+            Math.round(2.55 * brightness)
+              .toString(16)
+              .padStart(4, '0'),
+      'hex',
     );
 
     const data = plejdEncodeDecode(
@@ -125,6 +131,7 @@ export class PlejdService {
       this.log.error(
         `Connecting failed | ${peripheral.advertisement.localName} | addr: ${peripheral.address}) - err: ${error}`,
       );
+      await this.startScanning();
       return;
     }
 
@@ -148,7 +155,9 @@ export class PlejdService {
     await this.setupDevice(peripheral, characteristics);
   };
 
-  private discoverCaracteristics = async (peripheral: noble.Peripheral): Promise<noble.Characteristic[] | undefined> => {
+  private discoverCaracteristics = async (
+    peripheral: noble.Peripheral,
+  ): Promise<noble.Characteristic[] | undefined> => {
     const addr = peripheral.address;
     this.log.info(
       `Connected to mesh | ${peripheral.advertisement.localName} (addr: ${addr})`,
@@ -167,7 +176,12 @@ export class PlejdService {
     ];
 
     try {
-      return (await peripheral.discoverSomeServicesAndCharacteristicsAsync(services, characteristicIds)).characteristics;
+      return (
+        await peripheral.discoverSomeServicesAndCharacteristicsAsync(
+          services,
+          characteristicIds,
+        )
+      ).characteristics;
     } catch (error) {
       this.log.error(
         `Failed to setup device | ${peripheral.advertisement.localName} (addr: ${addr}) - err: ${error}`,
@@ -215,7 +229,11 @@ export class PlejdService {
   };
 
   private handleQueuedMessages = async () => {
-    while (this.sendQueue.length > 0 && this.connectedPeripheral && this.dataCharacteristic) {
+    while (
+      this.sendQueue.length > 0 &&
+      this.connectedPeripheral &&
+      this.dataCharacteristic
+    ) {
       const data = this.sendQueue.pop();
       if (!data) {
         return;
@@ -235,18 +253,30 @@ export class PlejdService {
         pingChar.writeAsync(ping, false);
         const pong = await pingChar.readAsync();
         if (((ping[0] + 1) & 0xff) !== pong[0]) {
-          this.log.error('Ping pong communication failed, missing pong response');
+          this.log.error(
+            'Ping pong communication failed, missing pong response',
+          );
         }
         await delay(PLEJD_PING_TIMEOUT);
       } catch (error) {
-        this.log.warn('Ping failed, device disconnected, will retry to connect to mesh: ', error);
+        this.log.warn(
+          'Ping failed, device disconnected, will retry to connect to mesh: ',
+          error,
+        );
         await this.startScanning();
       }
     }
   };
 
-  private handleNotification = async (data: Buffer, isNotification: boolean) => {
-    if (!this.connectedPeripheral || !this.addressBuffer || this.addressBuffer?.byteLength === 0) {
+  private handleNotification = async (
+    data: Buffer,
+    isNotification: boolean,
+  ) => {
+    if (
+      !this.connectedPeripheral ||
+      !this.addressBuffer ||
+      this.addressBuffer?.byteLength === 0
+    ) {
       return;
     }
 
@@ -314,7 +344,7 @@ export class PlejdService {
   };
 
   private startScanning = async (state: string | undefined = undefined) => {
-    if (!state){
+    if (!state) {
       state = noble._state;
     }
     if (state === NOBLE_IS_POWER_ON) {
@@ -323,11 +353,14 @@ export class PlejdService {
     }
   };
 
-  private setupCommunication = async (pingChar: noble.Characteristic, lastDataChar: noble.Characteristic) => {
+  private setupCommunication = async (
+    pingChar: noble.Characteristic,
+    lastDataChar: noble.Characteristic,
+  ) => {
     this.startPlejdPing(pingChar);
     await lastDataChar.subscribeAsync();
     lastDataChar.on('data', async (data, isNotification) => {
-      if(!lastDataChar || !this.connectedPeripheral) {
+      if (!lastDataChar || !this.connectedPeripheral) {
         await lastDataChar.unsubscribeAsync();
         return;
       }
@@ -338,6 +371,9 @@ export class PlejdService {
   private authenticate = async (authChar: noble.Characteristic) => {
     await authChar.writeAsync(Buffer.from([0x00]), false);
     const data = await authChar.readAsync();
-    await authChar.writeAsync(plejdCharResp(this.config.cryptoKey, data), false);
+    await authChar.writeAsync(
+      plejdCharResp(this.config.cryptoKey, data),
+      false,
+    );
   };
 }
