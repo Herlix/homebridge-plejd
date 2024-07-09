@@ -1,3 +1,7 @@
+#### 1.4.3 (2024-07-09)
+
+Re-occuring issue with reconnection to mesh, another try plus removal of unused items.
+
 #### 1.4.2 (2024-07-09)
 
 Attempt to fix issue with reconnection to mesh.

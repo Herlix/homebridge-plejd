@@ -10,7 +10,6 @@ import { randomBytes } from 'crypto';
 import noble from '@abandonware/noble';
 import { PLEJD_PING_TIMEOUT, PLEJD_WRITE_TIMEOUT } from './settings.js';
 import { delay } from './utils.js';
-import EventEmitter from 'events';
 
 const NOBLE_IS_POWER_ON = 'poweredOn';
 
@@ -144,7 +143,7 @@ export class PlejdService {
       this.log.error(
         `Connecting failed | ${peripheral.advertisement.localName} | addr: ${peripheral.address}) - err: ${error}`,
       );
-      this.resetBLE();
+      await this.resetBLE();
       return;
     }
 
