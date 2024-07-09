@@ -10,6 +10,7 @@ import { randomBytes } from 'crypto';
 import noble from '@abandonware/noble';
 import { PLEJD_PING_TIMEOUT, PLEJD_WRITE_TIMEOUT } from './settings.js';
 import { delay } from './utils.js';
+import EventEmitter from 'events';
 
 const NOBLE_IS_POWER_ON = 'poweredOn';
 
@@ -38,10 +39,10 @@ enum PlejdCommand {
 }
 
 export class PlejdService {
-  private connectedPeripheral: noble.Peripheral | null;
-  private addressBuffer: Buffer | null;
-  private dataCharacteristic: noble.Characteristic | null;
-  private sendQueue: Buffer[];
+  private connectedPeripheral: noble.Peripheral | null = null;
+  private addressBuffer: Buffer | null = null;
+  private dataCharacteristic: noble.Characteristic | null = null;
+  private sendQueue: Buffer[] = [];
 
   constructor(
     private readonly config: UserInputConfig,
@@ -51,25 +52,7 @@ export class PlejdService {
       isOn: boolean,
       dim?: number,
     ) => void,
-  ) {
-    this.addressBuffer = null;
-    this.dataCharacteristic = null;
-    this.connectedPeripheral = null;
-    this.sendQueue = [];
-
-    noble.on('stateChange', async (state) => {
-      await this.startScanning(state);
-    });
-
-    noble.on('warning', (msg: string) => {
-      this.log.warn('Noble warning: ', msg);
-    });
-
-    noble.on(
-      'discover',
-      async (peripheral) => await this.onDiscover(peripheral),
-    );
-  }
+  ) {}
 
   /**
    *
@@ -89,7 +72,7 @@ export class PlejdService {
       !this.dataCharacteristic ||
       !this.addressBuffer
     ) {
-      await this.startScanning();
+      await this.resetBLE();
       return;
     }
 
@@ -118,8 +101,38 @@ export class PlejdService {
     this.sendToDeviceQueued(data);
   };
 
+  configureBLE = () => {
+    noble.on('stateChange', async (state) => this.connectedPeripheral === null && await this.startScanning(state));
+    noble.on('warning', (msg: string) =>
+      this.log.warn('Noble warning: ', msg),
+    );
+    noble.on(
+      'discover',
+      async (peripheral) => await this.onDiscover(peripheral),
+    );
+  };
+
   //   -------------- Private -------------- \\
+
+  private resetPeripheral = async () => {
+    if (this.connectedPeripheral?.state === 'connected') {
+      this.connectedPeripheral.removeAllListeners();
+      await this.connectedPeripheral.disconnectAsync();
+    }
+    this.connectedPeripheral = null;
+    this.addressBuffer = null;
+    this.dataCharacteristic?.removeAllListeners();
+    this.dataCharacteristic = null;
+  };
+
+  private resetBLE = async () => {
+    await this.resetPeripheral();
+    await this.startScanning();
+  };
+
   private onDiscover = async (peripheral: noble.Peripheral) => {
+    this.resetPeripheral();
+
     this.log.debug(
       `Discovered | ${peripheral.advertisement.localName} | addr: ${peripheral.address} | RSSI: ${peripheral.rssi} dB`,
     );
@@ -131,25 +144,21 @@ export class PlejdService {
       this.log.error(
         `Connecting failed | ${peripheral.advertisement.localName} | addr: ${peripheral.address}) - err: ${error}`,
       );
-      await this.startScanning();
+      this.resetBLE();
       return;
     }
 
     this.connectedPeripheral = peripheral;
 
     peripheral.once('disconnect', async () => {
-      this.connectedPeripheral?.removeAllListeners();
-      this.connectedPeripheral = null;
-      this.addressBuffer = null;
-      this.dataCharacteristic = null;
       this.log.info('Disconnected from mesh');
-      await this.startScanning();
+      await this.resetBLE();
     });
 
     const characteristics = await this.discoverCaracteristics(peripheral);
     if (!characteristics) {
       this.log.error('Failed to discover characteristics, disconnecting...');
-      await peripheral.disconnectAsync();
+      await this.resetBLE();
       return;
     }
     await this.setupDevice(peripheral, characteristics);
@@ -263,7 +272,7 @@ export class PlejdService {
           'Ping failed, device disconnected, will retry to connect to mesh: ',
           error,
         );
-        await this.startScanning();
+        await this.resetBLE();
       }
     }
   };
@@ -277,6 +286,7 @@ export class PlejdService {
       !this.addressBuffer ||
       this.addressBuffer?.byteLength === 0
     ) {
+      await this.resetBLE();
       return;
     }
 

@@ -1,3 +1,7 @@
+#### 1.4.2 (2024-07-09)
+
+Attempt to fix issue with reconnection to mesh.
+
 #### 1.4.1 (2024-06-30)
 
 Bug fix: Re-scan when unable to connect to Plejd device

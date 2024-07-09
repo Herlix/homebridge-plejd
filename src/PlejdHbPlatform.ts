@@ -164,6 +164,7 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
       log,
       this.onPlejdUpdates.bind(this),
     );
+    this.plejdService.configureBLE();
 
     this.discoverDevices();
   };
