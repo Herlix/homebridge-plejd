@@ -64,11 +64,7 @@ export class PlejdService {
     isOn: boolean,
     brightness: number | null,
   ) => {
-    if (
-      !this.connectedPeripheral ||
-      !this.dataCharacteristic ||
-      !this.addressBuffer
-    ) {
+    if (!this.connected() || !this.addressBuffer) {
       return;
     }
 
@@ -135,17 +131,9 @@ export class PlejdService {
 
     this.connectedPeripheral = peripheral;
 
-    const clearLocals = () => {
-      this.connectedPeripheral = null;
-      this.addressBuffer = null;
-      this.dataCharacteristic?.removeAllListeners();
-      this.dataCharacteristic = null;
-    };
-
     peripheral.once('disconnect', async () => {
       this.log.info('Disconnected from mesh');
-      clearLocals();
-
+      noble.reset();
       if (noble._state === 'poweredOn') {
         this.log.info('Scanning for Plejd devices as we are disconnected from mesh...');
         await noble.startScanningAsync([PlejdCharacteristics.Service], false);
@@ -155,7 +143,9 @@ export class PlejdService {
     const characteristics = await this.discoverCaracteristics(peripheral);
     if (!characteristics) {
       this.log.error('Failed to discover characteristics, disconnecting...');
-      clearLocals();
+      if (peripheral.state === 'connected') {
+        await peripheral.disconnectAsync();
+      }
       return;
     }
 
@@ -239,8 +229,8 @@ export class PlejdService {
   private handleQueuedMessages = async () => {
     while (
       this.sendQueue.length > 0 &&
-      this.connectedPeripheral &&
-      this.dataCharacteristic
+      this.dataCharacteristic &&
+      this.connected()
     ) {
       const data = this.sendQueue.pop();
       if (!data) {
@@ -261,7 +251,7 @@ export class PlejdService {
   };
 
   private startPlejdPing = async (pingChar: noble.Characteristic) => {
-    while (this.connectedPeripheral && pingChar) {
+    while (this.connected() && pingChar) {
       try {
         const ping = randomBytes(1);
         pingChar.writeAsync(ping, false);
@@ -285,11 +275,7 @@ export class PlejdService {
     data: Buffer,
     isNotification: boolean,
   ) => {
-    if (
-      !this.connectedPeripheral ||
-      !this.addressBuffer ||
-      this.addressBuffer?.byteLength === 0
-    ) {
+    if (!this.connected() || !this.addressBuffer || this.addressBuffer?.byteLength === 0) {
       return;
     }
 
@@ -363,7 +349,7 @@ export class PlejdService {
     this.startPlejdPing(pingChar);
     await lastDataChar.subscribeAsync();
     lastDataChar.on('data', async (data, isNotification) => {
-      if (!lastDataChar || !this.connectedPeripheral) {
+      if (!this.connected()) {
         await lastDataChar.unsubscribeAsync();
         return;
       }
@@ -379,4 +365,6 @@ export class PlejdService {
       false,
     );
   };
+
+  private connected = () => this.connectedPeripheral?.state === 'connected';
 }

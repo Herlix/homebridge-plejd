@@ -1,4 +1,8 @@
-#### 1.4.3 (2024-07-09)
+#### 1.4.4 (2024-07-09)
+
+Enable lower level reset on disconnect & add timeout ms.
+
+#### 1.4.3 (2024-07-10)
 
 BLE issue still seems to be there. This update will take another path on reconnecting to the mesh as well as handle any errors when we send commands to the Plejd device, it should now retry on reconnect.
 
