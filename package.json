@@ -3,7 +3,7 @@
   "displayName": "Plejd",
   "name": "homebridge-plejd",
   "author": "Herlix",
-  "version": "1.4.3",
+  "version": "1.4.4",
   "description": "HomeKit support for the Plejd BLE platform using Homebridge",
   "license": "Apache-2.0",
   "type": "module",

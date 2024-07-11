@@ -1,5 +1,9 @@
 #### 1.4.3 (2024-07-09)
 
+BLE issue still seems to be there. This update will take another path on reconnecting to the mesh as well as handle any errors when we send commands to the Plejd device, it should now retry on reconnect.
+
+#### 1.4.3 (2024-07-09)
+
 Re-occuring issue with reconnection to mesh, another try plus removal of unused items.
 
 #### 1.4.2 (2024-07-09)
