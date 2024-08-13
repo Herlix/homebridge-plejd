@@ -1,3 +1,15 @@
+#### 1.4.7 (2024-08-13)
+
+Check support for HB 2.0. Added more retry if device has not proppely disconnected yet.
+
+#### 1.4.6 (2024-07-09)
+
+Fix for unknown device from Noble. I have yet to re-produce the error in my development environment.
+
+#### 1.4.5 (2024-07-09)
+
+Add hard reset to noble on disconnect.
+
 #### 1.4.4 (2024-07-09)
 
 Enable lower level reset on disconnect & add timeout ms.

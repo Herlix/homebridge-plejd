@@ -3,7 +3,7 @@
   "displayName": "Plejd",
   "name": "homebridge-plejd",
   "author": "Herlix",
-  "version": "1.4.5",
+  "version": "1.4.7",
   "description": "HomeKit support for the Plejd BLE platform using Homebridge",
   "license": "Apache-2.0",
   "type": "module",
@@ -15,8 +15,8 @@
     "url": "https://github.com/Herlix/homebridge-plejd/issues"
   },
   "engines": {
-    "node": "^18.17.0 || ^20.9.0",
-    "homebridge": "^1.8.0"
+    "node": ">=18.20.4",
+    "homebridge": "^1.8.0 || ^2.0.0-beta.0"
   },
   "main": "dist/index.js",
   "scripts": {
@@ -25,20 +25,28 @@
     "build": "rimraf ./dist && tsc",
     "prepublishOnly": "npm run lint && npm run build"
   },
-  "keywords": ["homebridge-plugin", "plejd"],
+  "keywords": [
+    "homebridge-plugin",
+    "plejd"
+  ],
   "dependencies": {
     "@abandonware/noble": "^1.9.2-25"
   },
   "devDependencies": {
+    "@eslint/js": "^9.9.0",
+    "@types/eslint": "^9.6.0",
     "@types/noble": "^0.0.44",
-    "@types/node": "^20.12.13",
-    "@typescript-eslint/eslint-plugin": "^7.11.0",
-    "@typescript-eslint/parser": "^7.11.0",
-    "eslint": "^8.57.0",
-    "homebridge": "^1.8.2",
-    "nodemon": "^3.1.2",
-    "rimraf": "^5.0.7",
+    "@types/node": "^22.2.0",
+    "@typescript-eslint/eslint-plugin": "^8.1.0",
+    "@typescript-eslint/parser": "^8.1.0",
+    "eslint": "^9.9.0",
+    "eslint-config-prettier": "^9.1.0",
+    "globals": "^15.9.0",
+    "homebridge": "^1.8.4",
+    "nodemon": "^3.1.4",
+    "rimraf": "^6.0.1",
     "ts-node": "^10.9.2",
-    "typescript": "^5.4.5"
+    "typescript": "^5.5.4",
+    "typescript-eslint": "^8.1.0"
   }
 }
