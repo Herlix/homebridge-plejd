@@ -98,7 +98,7 @@ export class PlejdService {
       this.log.debug(`Noble State changed: ${state}`);
       if (state === "poweredOn") {
         this.log.info("Scanning for Plejd devices as we started...");
-        await noble.startScanningAsync([PlejdCharacteristics.Service], false);
+        await this.startScanning();
       }
     });
 
@@ -120,38 +120,56 @@ export class PlejdService {
     );
     await noble.stopScanningAsync();
 
+    if (this.connected()) {
+      await this.connectedPeripheral?.disconnectAsync();
+    }
+
     try {
       await peripheral.connectAsync();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
-      if (error.toString().includes("Peripheral already connected")) {
-        await peripheral?.disconnectAsync();
-        await this.onDiscover(peripheral);
-        return;
-      }
-
       this.log.error(
         `Connecting failed | ${peripheral.advertisement.localName} | addr: ${peripheral.address}) - err: ${error}`,
       );
+      await peripheral?.disconnectAsync();
+      noble.reset();
+      await this.startScanning();
       return;
     }
 
     this.connectedPeripheral = peripheral.once("disconnect", async () => {
       this.log.info("Disconnected from mesh");
-      noble.reset();
       if (noble._state === "poweredOn") {
         this.log.info(
           "Scanning for Plejd devices as we are disconnected from mesh...",
         );
-        await noble.startScanningAsync([PlejdCharacteristics.Service], false);
+        await this.startScanning();
       }
     });
 
-    const characteristics = await this.discoverCaracteristics(peripheral);
-    if (!characteristics) {
-      this.log.error("Failed to discover characteristics, disconnecting...");
+    let characteristics: noble.Characteristic[] | undefined;
+    try {
+      characteristics = await this.discoverCaracteristics(peripheral);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } catch (e: any) {
+      this.log.error(
+        "Failed to discover characteristics, disconnecting. Error:",
+        e,
+      );
       if (peripheral.state === "connected") {
         await peripheral.disconnectAsync();
+        this.startScanning();
+      }
+      return;
+    }
+
+    if (!characteristics) {
+      this.log.error(
+        "Error: No characteristics found, disconnecting and scanning again...",
+      );
+      if (peripheral.state === "connected") {
+        await peripheral.disconnectAsync();
+        this.startScanning();
       }
       return;
     }
@@ -379,4 +397,7 @@ export class PlejdService {
 
   private connected = () =>
     this.connectedPeripheral && this.connectedPeripheral.state === "connected";
+
+  private startScanning = async () =>
+    await noble.startScanningAsync([PlejdCharacteristics.Service], false);
 }

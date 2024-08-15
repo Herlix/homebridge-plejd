@@ -1,3 +1,7 @@
+#### 1.4.7 (2024-08-15)
+
+Yet another try at the re-connection issue.
+
 #### 1.4.7 (2024-08-13)
 
 Check support for HB 2.0. Added more retry if device has not proppely disconnected yet.
