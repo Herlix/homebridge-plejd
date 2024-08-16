@@ -1,3 +1,7 @@
+#### 1.4.8 (2024-08-16)
+
+Catch all Noble errors, refactor ping pong and message queue logic.
+
 #### 1.4.7 (2024-08-15)
 
 Yet another try at the re-connection issue.
