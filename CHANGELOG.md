@@ -1,3 +1,7 @@
+#### 1.5.0(2024-08-16)
+
+Discard global state, add more logging to see what is going on.
+
 #### 1.4.8 (2024-08-16)
 
 Catch all Noble errors, refactor ping pong and message queue logic.

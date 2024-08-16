@@ -35,8 +35,6 @@ enum PlejdCommand {
 }
 
 export class PlejdService {
-  private connectedPeripheral: noble.Peripheral | null = null;
-
   private sendQueue: Buffer[] = [];
   private plejdTimeout: NodeJS.Timeout | null = null;
   private queueTimeout: NodeJS.Timeout | null = null;
@@ -64,11 +62,6 @@ export class PlejdService {
     isOn: boolean,
     brightness: number | null,
   ) => {
-    const addressBuffer = this.getAddressBuffer();
-    if (!this.storedPeripheralConnected() || !addressBuffer) {
-      return;
-    }
-
     const payload = Buffer.from(
       !brightness || brightness === 0
         ? identifier.toString(16).padStart(2, "0") +
@@ -85,13 +78,7 @@ export class PlejdService {
       "hex",
     );
 
-    const data = plejdEncodeDecode(
-      this.config.cryptoKey,
-      addressBuffer,
-      payload,
-    );
-
-    this.sendQueue.unshift(data);
+    this.sendQueue.unshift(payload);
   };
 
   configureBLE = () => {
@@ -103,11 +90,6 @@ export class PlejdService {
     noble.on("warning", (msg: string) => {
       this.log.warn("Noble warning: ", msg);
     });
-
-    noble.on(
-      "discover",
-      async (peripheral) => await this.onDiscover(peripheral),
-    );
   };
 
   //   -------------- Private -------------- \\
@@ -116,27 +98,27 @@ export class PlejdService {
     this.log.info(
       `Discovered | ${peripheral.advertisement.localName} | addr: ${peripheral.address} | RSSI: ${peripheral.rssi} dB`,
     );
+    this.log.debug(`Stopping scan`);
     await noble.stopScanningAsync();
 
-    if (this.storedPeripheralConnected()) {
-      this.tryDisconnect(this.connectedPeripheral);
-    }
-
     try {
+      this.log.debug(`Connecting to the new peripheral`);
       await peripheral.connectAsync();
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (error: any) {
+      this.log.info(
+        `Connected to mesh | ${peripheral.advertisement.localName} (addr: ${peripheral.address})`,
+      );
+    } catch (error) {
       this.log.error(
         `Connecting failed | ${peripheral.advertisement.localName} | addr: ${peripheral.address}) - err: ${error}`,
       );
-      await this.tryDisconnect(this.connectedPeripheral);
       await this.tryDisconnect(peripheral);
       noble.reset();
       await this.tryStartScanning();
       return;
     }
 
-    this.connectedPeripheral = peripheral.once("disconnect", async () => {
+    this.log.debug("Setting up disconnect handle");
+    peripheral.once("disconnect", async () => {
       this.log.info("Disconnected from mesh");
       await this.tryStartScanning();
     });
@@ -144,8 +126,7 @@ export class PlejdService {
     let characteristics: noble.Characteristic[];
     try {
       characteristics = await this.discoverCaracteristics(peripheral);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (e: any) {
+    } catch (e) {
       this.log.error(
         "Failed to discover characteristics, disconnecting. Error:",
         e,
@@ -161,11 +142,7 @@ export class PlejdService {
   private discoverCaracteristics = async (
     peripheral: noble.Peripheral,
   ): Promise<noble.Characteristic[]> => {
-    const addr = peripheral.address;
-    this.log.info(
-      `Connected to mesh | ${peripheral.advertisement.localName} (addr: ${addr})`,
-    );
-
+    this.log.debug("Discovering characteristics");
     const services = [PlejdCharacteristics.Service];
     const characteristicIds = [
       PlejdCharacteristics.Data,
@@ -179,7 +156,7 @@ export class PlejdService {
         services,
         characteristicIds,
       );
-
+    this.log.debug("Characteristics discovered");
     return characteristics;
   };
 
@@ -187,6 +164,7 @@ export class PlejdService {
     peripheral: noble.Peripheral,
     characteristics: noble.Characteristic[],
   ) => {
+    this.log.debug("Locating relevant characteristics");
     const authChar = characteristics.find(
       (char) => char.uuid === PlejdCharacteristics.Auth,
     );
@@ -210,28 +188,46 @@ export class PlejdService {
       );
       return;
     }
+
+    const addressBuffer = reverseBuffer(
+      Buffer.from(String(peripheral.address).replace(/:/g, ""), "hex"),
+    );
+
     await this.authenticate(authChar);
-    await this.setupCommunication(pingChar, lastDataChar, dataChar);
+    await this.setupCommunication(
+      pingChar,
+      lastDataChar,
+      dataChar,
+      addressBuffer,
+    );
   };
 
-  private handleQueuedMessages = (dataChar: noble.Characteristic) => {
+  private handleQueuedMessages = (
+    dataChar: noble.Characteristic,
+    addressBuffer: Buffer,
+  ) => {
     if (this.queueTimeout) {
       clearTimeout(this.queueTimeout);
     }
 
     this.queueTimeout = setTimeout(async () => {
-      const data = this.sendQueue.pop();
-      if (!data || !this.storedPeripheralConnected()) {
-        this.handleQueuedMessages(dataChar);
+      const payload = this.sendQueue.pop();
+      if (!payload) {
+        this.handleQueuedMessages(dataChar, addressBuffer);
         return;
       }
 
+      const data = plejdEncodeDecode(
+        this.config.cryptoKey,
+        addressBuffer,
+        payload,
+      );
       this.log.debug(
-        `BLE command sent to ${this.getAddressBuffer()?.toString("hex") ?? "Unknown"} | ${data.length} bytes | ${data.toString("hex")}`,
+        `BLE command sent to ${addressBuffer?.toString("hex") ?? "Unknown"} | ${data.length} bytes | ${data.toString("hex")}`,
       );
       try {
         await dataChar.writeAsync(data, false);
-        this.handleQueuedMessages(dataChar);
+        this.handleQueuedMessages(dataChar, addressBuffer);
       } catch (error) {
         this.sendQueue.unshift(data);
         this.log.error("Failed to send data to device, will retry: ", error);
@@ -338,27 +334,17 @@ export class PlejdService {
     pingChar: noble.Characteristic,
     lastDataChar: noble.Characteristic,
     dataChar: noble.Characteristic,
+    addressBuffer: Buffer,
   ) => {
+    this.log.debug("Setting up ping pong communication with Plejd device");
     this.startPlejdPing(pingChar);
-    this.handleQueuedMessages(dataChar);
-
-    const addressBuffer = this.getAddressBuffer();
-
-    if (!addressBuffer) {
-      this.log.error(
-        "Failed to get address buffer",
-        this.connectedPeripheral?.address,
-      );
-      return;
-    }
+    this.log.debug("Starting queue handler for messages to Plejd device");
+    this.handleQueuedMessages(dataChar, addressBuffer);
 
     try {
+      this.log.debug("Subscribing to incomming messages");
       await lastDataChar.subscribeAsync();
       lastDataChar.on("data", async (data, isNotification) => {
-        if (!this.storedPeripheralConnected()) {
-          await lastDataChar.unsubscribeAsync();
-          return;
-        }
         await this.handleNotification(data, isNotification, addressBuffer);
       });
     } catch (e) {
@@ -368,47 +354,40 @@ export class PlejdService {
 
   private authenticate = async (authChar: noble.Characteristic) => {
     try {
+      this.log.debug("Authenticating to Plejd device");
       await authChar.writeAsync(Buffer.from([0x00]), false);
       const data = await authChar.readAsync();
       await authChar.writeAsync(
         plejdCharResp(this.config.cryptoKey, data),
         false,
       );
+      this.log.debug("Authentication successful");
     } catch (e) {
       this.log.error("Failed to authenticate to Plejd device", e);
     }
   };
 
-  private storedPeripheralConnected = () =>
-    this.connectedPeripheral !== null &&
-    this.connectedPeripheral.state === "connected";
-
   private tryStartScanning = async () => {
     try {
       if (noble._state === "poweredOn") {
         this.log.info("Scanning for Plejd devices");
+
         await noble.startScanningAsync([PlejdCharacteristics.Service], false);
+        noble.once(
+          "discover",
+          async (peripheral) => await this.onDiscover(peripheral),
+        );
       }
     } catch (e) {
       this.log.error("Failed to start scanning for Plejd devices", e);
     }
   };
 
-  private tryDisconnect = async (peripheral: noble.Peripheral | null) => {
+  private tryDisconnect = async (peripheral: noble.Peripheral) => {
     try {
-      await peripheral?.disconnectAsync();
+      await peripheral.disconnectAsync();
     } catch (e) {
       this.log.debug("Failed to disconnect from previous peripheral", e);
     }
   };
-
-  private getAddressBuffer = (): Buffer | null =>
-    this.connectedPeripheral?.address
-      ? reverseBuffer(
-          Buffer.from(
-            String(this.connectedPeripheral?.address).replace(/:/g, ""),
-            "hex",
-          ),
-        )
-      : null;
 }
