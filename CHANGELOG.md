@@ -1,3 +1,7 @@
+#### 1.5.1(2024-09-24)
+
+Refactor reconnection logic, add more logging around RSSI status.
+
 #### 1.5.0(2024-08-16)
 
 Discard global state, add more logging to see what is going on.

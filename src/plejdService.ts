@@ -96,48 +96,87 @@ export class PlejdService {
 
   private onDiscover = async (peripheral: noble.Peripheral) => {
     this.log.info(
-      `Discovered | ${peripheral.advertisement.localName} | addr: ${peripheral.address} | RSSI: ${peripheral.rssi} dB`,
+      `Discovered | ${peripheral.advertisement.localName} | addr: ${peripheral.address} | Signal strength: ${this.mapRssiToQuality(peripheral.rssi)} (${peripheral.rssi} dB)`,
     );
     this.log.debug(`Stopping scan`);
     await noble.stopScanningAsync();
 
-    try {
-      this.log.debug(`Connecting to the new peripheral`);
-      await peripheral.connectAsync();
-      this.log.info(
-        `Connected to mesh | ${peripheral.advertisement.localName} (addr: ${peripheral.address})`,
-      );
-    } catch (error) {
-      this.log.error(
-        `Connecting failed | ${peripheral.advertisement.localName} | addr: ${peripheral.address}) - err: ${error}`,
-      );
-      await this.tryDisconnect(peripheral);
-      noble.reset();
-      await this.tryStartScanning();
-      return;
-    }
+    let retryCount = 0;
+    const maxRetries = 3;
 
-    this.log.debug("Setting up disconnect handle");
-    peripheral.once("disconnect", async () => {
-      this.log.info("Disconnected from mesh");
-      await this.tryStartScanning();
-    });
+    const connectWithRetry = async () => {
+      try {
+        this.log.debug(`Connecting to the new peripheral`);
+        await peripheral.connectAsync();
+        this.log.info(
+          `Connected to mesh | ${peripheral.advertisement.localName} (addr: ${peripheral.address})`,
+        );
 
-    let characteristics: noble.Characteristic[];
-    try {
-      characteristics = await this.discoverCaracteristics(peripheral);
-    } catch (e) {
-      this.log.error(
-        "Failed to discover characteristics, disconnecting. Error:",
-        e,
-      );
-      await this.tryDisconnect(peripheral);
-      this.tryStartScanning();
-      return;
-    }
+        peripheral.once("disconnect", async () => {
+          this.log.info("Disconnected from mesh");
+          if (retryCount < maxRetries) {
+            retryCount++;
+            this.log.debug(`Attempting to reconnect (attempt ${retryCount})`);
+            await connectWithRetry();
+          } else {
+            this.log.error("Max reconnection attempts reached. Starting scan.");
+            await this.tryStartScanning();
+          }
+        });
 
-    await this.setupDevice(peripheral, characteristics);
+        // Reset retry count on successful connection
+        retryCount = 0;
+
+        let characteristics: noble.Characteristic[];
+        try {
+          characteristics = await this.discoverCaracteristics(peripheral);
+        } catch (e) {
+          this.log.error(
+            "Failed to discover characteristics, disconnecting. Error:",
+            e,
+          );
+          await this.tryDisconnect(peripheral);
+          throw e;
+        }
+
+        await this.setupDevice(peripheral, characteristics);
+      } catch (error) {
+        this.log.error(
+          `Connecting failed | ${peripheral.advertisement.localName} | addr: ${peripheral.address}) - err: ${error}`,
+        );
+        await this.tryDisconnect(peripheral);
+        if (retryCount < maxRetries) {
+          retryCount++;
+          this.log.debug(`Attempting to reconnect (attempt ${retryCount})`);
+          await connectWithRetry();
+        } else {
+          this.log.error(
+            "Max reconnection attempts reached. Resetting noble and starting scan.",
+          );
+          noble.reset();
+          await this.tryStartScanning();
+        }
+      }
+    };
+
+    await connectWithRetry();
   };
+
+  private mapRssiToQuality(rssi: number): string {
+    if (rssi >= -30) {
+      return "Excellent (Very close proximity)";
+    } else if (rssi >= -67) {
+      return "Very Good";
+    } else if (rssi >= -70) {
+      return "Good";
+    } else if (rssi >= -80) {
+      return "Fair";
+    } else if (rssi >= -90) {
+      return "Weak";
+    } else {
+      return "Very Weak (Potential connection issues)";
+    }
+  }
 
   private discoverCaracteristics = async (
     peripheral: noble.Peripheral,
