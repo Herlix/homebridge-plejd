@@ -1,3 +1,7 @@
+#### 1.6.0(2024-12-16)
+
+Handle the longer device model descriptive names of newer Plejd devices.
+
 #### 1.5.1(2024-09-24)
 
 Refactor reconnection logic, add more logging around RSSI status.
