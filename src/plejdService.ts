@@ -9,6 +9,7 @@ import {
 import { randomBytes } from "crypto";
 import noble from "@abandonware/noble";
 import { PLEJD_PING_TIMEOUT, PLEJD_WRITE_TIMEOUT } from "./settings.js";
+import { delay, race } from "./utils.js";
 
 /**
  * Plejd BLE UUIDs
@@ -38,6 +39,18 @@ export class PlejdService {
   private sendQueue: Buffer[] = [];
   private plejdTimeout: NodeJS.Timeout | null = null;
   private queueTimeout: NodeJS.Timeout | null = null;
+  private blacklistCleanupInterval: NodeJS.Timeout | null = null;
+  private isConnecting = false;
+  private isAuthenticated = false;
+  private deviceState = {
+    lastPingSuccess: Date.now(),
+    consecutivePingFailures: 0,
+  };
+  private deviceBlacklist: Map<string, { until: number; attempts: number }> =
+    new Map();
+  private readonly MAX_FAILURES = 5;
+  private readonly BLACKLIST_DURATION = 5 * 60 * 1000;
+  private readonly EXTENDED_BLACKLIST_DURATION = 30 * 60 * 1000;
 
   constructor(
     private readonly config: UserInputConfig,
@@ -82,6 +95,7 @@ export class PlejdService {
   };
 
   configureBLE = () => {
+    this.startBlacklistCleanup();
     noble.on("stateChange", async (state) => {
       this.log.debug(`Noble State changed: ${state}`);
       await this.tryStartScanning();
@@ -95,6 +109,23 @@ export class PlejdService {
   //   -------------- Private -------------- \\
 
   private onDiscover = async (peripheral: noble.Peripheral) => {
+    if (peripheral.rssi < -90) {
+      this.log.debug(
+        `Skipping device with weak signal: ${peripheral.address} (${peripheral.rssi} dB)`,
+      );
+      return;
+    }
+
+    if (this.isDeviceBlacklisted(peripheral.address)) {
+      this.log.debug(`Skipping blacklisted device: ${peripheral.address}`);
+      return;
+    }
+
+    if (this.isConnecting) {
+      this.log.debug("Connection already in progress, skipping...");
+      return;
+    }
+
     this.log.info(
       `Discovered | ${peripheral.advertisement.localName} | addr: ${peripheral.address} | Signal strength: ${this.mapRssiToQuality(peripheral.rssi)} (${peripheral.rssi} dB)`,
     );
@@ -106,6 +137,11 @@ export class PlejdService {
 
     const connectWithRetry = async () => {
       try {
+        if (retryCount > 0) {
+          await delay(2000);
+        }
+
+        this.isConnecting = true;
         this.log.debug(`Connecting to the new peripheral`);
         await peripheral.connectAsync();
         this.log.info(
@@ -114,12 +150,14 @@ export class PlejdService {
 
         peripheral.once("disconnect", async () => {
           this.log.info("Disconnected from mesh");
+          this.cleanup();
           if (retryCount < maxRetries) {
             retryCount++;
             this.log.debug(`Attempting to reconnect (attempt ${retryCount})`);
             await connectWithRetry();
           } else {
             this.log.error("Max reconnection attempts reached. Starting scan.");
+            await delay(5000);
             await this.tryStartScanning();
           }
         });
@@ -156,6 +194,8 @@ export class PlejdService {
           noble.reset();
           await this.tryStartScanning();
         }
+      } finally {
+        this.isConnecting = false;
       }
     };
 
@@ -225,6 +265,7 @@ export class PlejdService {
         lastDataChar,
         pingChar,
       );
+      await this.tryDisconnect(peripheral);
       return;
     }
 
@@ -232,8 +273,9 @@ export class PlejdService {
       Buffer.from(String(peripheral.address).replace(/:/g, ""), "hex"),
     );
 
-    await this.authenticate(authChar);
+    await this.authenticate(peripheral, authChar);
     await this.setupCommunication(
+      peripheral,
       pingChar,
       lastDataChar,
       dataChar,
@@ -264,8 +306,26 @@ export class PlejdService {
       this.log.debug(
         `BLE command sent to ${addressBuffer?.toString("hex") ?? "Unknown"} | ${data.length} bytes | ${data.toString("hex")}`,
       );
+
+      let retryCount = 0;
+      const maxRetries = 3;
+
+      const tryWrite = async (): Promise<void> => {
+        try {
+          await race(() => dataChar.writeAsync(data, false));
+        } catch (error) {
+          if (retryCount < maxRetries) {
+            retryCount++;
+            this.log.debug(`Retrying write (${retryCount}/${maxRetries})`);
+            await delay(100);
+            return tryWrite();
+          }
+          throw error;
+        }
+      };
+
       try {
-        await dataChar.writeAsync(data, false);
+        await tryWrite();
         this.handleQueuedMessages(dataChar, addressBuffer);
       } catch (error) {
         this.sendQueue.unshift(data);
@@ -274,7 +334,10 @@ export class PlejdService {
     }, PLEJD_WRITE_TIMEOUT);
   };
 
-  private startPlejdPing = (pingChar: noble.Characteristic) => {
+  private startPlejdPing = (
+    peripheral: noble.Peripheral,
+    pingChar: noble.Characteristic,
+  ) => {
     if (this.plejdTimeout) {
       clearTimeout(this.plejdTimeout);
     }
@@ -283,15 +346,23 @@ export class PlejdService {
       if (pingChar) {
         try {
           const ping = randomBytes(1);
-          await pingChar.writeAsync(ping, false);
-          const pong = await pingChar.readAsync();
+          await race(() => pingChar.writeAsync(ping, false));
+          const pong = await race(() => pingChar.readAsync());
           if (((ping[0] + 1) & 0xff) !== pong[0]) {
             this.log.error(
               "Ping pong communication failed, missing pong response",
             );
           }
-          this.startPlejdPing(pingChar);
+          this.deviceState.lastPingSuccess = Date.now();
+          this.deviceState.consecutivePingFailures = 0;
+          this.startPlejdPing(peripheral, pingChar);
         } catch (error) {
+          this.deviceState.consecutivePingFailures++;
+          const address = peripheral?.address;
+          if (address && this.deviceState.consecutivePingFailures >= 3) {
+            this.blacklistDevice(address, `Ping failed: ${error}`);
+            await this.tryDisconnect(peripheral);
+          }
           this.log.warn(
             "Ping failed, device disconnected, will retry to connect to mesh: ",
             error,
@@ -370,38 +441,62 @@ export class PlejdService {
   };
 
   private setupCommunication = async (
+    peripheral: noble.Peripheral,
     pingChar: noble.Characteristic,
     lastDataChar: noble.Characteristic,
     dataChar: noble.Characteristic,
     addressBuffer: Buffer,
   ) => {
     this.log.debug("Setting up ping pong communication with Plejd device");
-    this.startPlejdPing(pingChar);
+    this.startPlejdPing(peripheral, pingChar);
     this.log.debug("Starting queue handler for messages to Plejd device");
     this.handleQueuedMessages(dataChar, addressBuffer);
 
     try {
       this.log.debug("Subscribing to incomming messages");
-      await lastDataChar.subscribeAsync();
+      await race(() => lastDataChar.subscribeAsync());
       lastDataChar.on("data", async (data, isNotification) => {
         await this.handleNotification(data, isNotification, addressBuffer);
       });
     } catch (e) {
+      const address = peripheral?.address;
+      if (address) {
+        this.blacklistDevice(address, `Communication setup failed: ${e}`);
+      }
+      await this.tryDisconnect(peripheral);
       this.log.error("Failed to subscribe to Plejd device", e);
     }
   };
 
-  private authenticate = async (authChar: noble.Characteristic) => {
+  private authenticate = async (
+    peripheral: noble.Peripheral,
+    authChar: noble.Characteristic,
+  ) => {
+    if (this.isAuthenticated) {
+      return;
+    }
+
     try {
       this.log.debug("Authenticating to Plejd device");
-      await authChar.writeAsync(Buffer.from([0x00]), false);
-      const data = await authChar.readAsync();
+      await race(() => authChar.writeAsync(Buffer.from([0x00]), false));
+      await delay(100);
+      const data = await race(() => authChar.readAsync());
+      await delay(100);
       await authChar.writeAsync(
         plejdCharResp(this.config.cryptoKey, data),
         false,
       );
+      await delay(100);
+
       this.log.debug("Authentication successful");
+      this.isAuthenticated = true;
     } catch (e) {
+      this.isAuthenticated = false;
+      const address = peripheral?.address;
+      if (address) {
+        this.blacklistDevice(address, `Authentication failed: ${e}`);
+      }
+      await this.tryDisconnect(peripheral);
       this.log.error("Failed to authenticate to Plejd device", e);
     }
   };
@@ -409,16 +504,30 @@ export class PlejdService {
   private tryStartScanning = async () => {
     try {
       if (noble._state === "poweredOn") {
+        this.cleanupBlacklist();
         this.log.info("Scanning for Plejd devices");
-
-        await noble.startScanningAsync([PlejdCharacteristics.Service], false);
+        await delay(5000);
+        await race(
+          () => noble.startScanningAsync([PlejdCharacteristics.Service], false),
+          10_000,
+        );
         noble.once(
           "discover",
           async (peripheral) => await this.onDiscover(peripheral),
         );
+
+        setTimeout(async () => {
+          if (!this.isAuthenticated) {
+            this.log.warn("No device found during scan, restarting scan");
+            await noble.stopScanningAsync();
+            await this.tryStartScanning();
+          }
+        }, 30000);
       }
     } catch (e) {
       this.log.error("Failed to start scanning for Plejd devices", e);
+      await delay(10000);
+      await this.tryStartScanning();
     }
   };
 
@@ -429,4 +538,84 @@ export class PlejdService {
       this.log.debug("Failed to disconnect from previous peripheral", e);
     }
   };
+
+  private isDeviceBlacklisted(address: string): boolean {
+    const blacklistEntry = this.deviceBlacklist.get(address);
+    if (!blacklistEntry) return false;
+
+    if (Date.now() > blacklistEntry.until) {
+      this.deviceBlacklist.delete(address);
+      return false;
+    }
+
+    return true;
+  }
+
+  private blacklistDevice(address: string, reason: string) {
+    const entry = this.deviceBlacklist.get(address) ?? {
+      until: 0,
+      attempts: 0,
+    };
+    entry.attempts++;
+
+    const baseTime =
+      entry.attempts >= this.MAX_FAILURES
+        ? this.EXTENDED_BLACKLIST_DURATION
+        : this.BLACKLIST_DURATION;
+
+    const duration = Math.min(
+      baseTime * Math.pow(2, entry.attempts - 1),
+      24 * 60 * 60 * 1000, // Max 24 hours
+    );
+
+    entry.until = Date.now() + duration;
+    this.deviceBlacklist.set(address, entry);
+
+    this.log.warn(
+      `Device ${address} blacklisted for ${duration / 1000} seconds. Reason: ${reason}. Failure attempts: ${entry.attempts}`,
+    );
+  }
+
+  private cleanupBlacklist() {
+    const now = Date.now();
+    for (const [address, entry] of this.deviceBlacklist.entries()) {
+      if (now > entry.until) {
+        this.deviceBlacklist.delete(address);
+      }
+    }
+  }
+
+  private startBlacklistCleanup() {
+    if (this.blacklistCleanupInterval) {
+      clearInterval(this.blacklistCleanupInterval);
+    }
+
+    this.blacklistCleanupInterval = setInterval(
+      () => {
+        this.cleanupBlacklist();
+      },
+      5 * 60 * 1000,
+    ); // Clean every 5 minutes
+  }
+
+  private cleanup() {
+    if (this.plejdTimeout) {
+      clearTimeout(this.plejdTimeout);
+      this.plejdTimeout = null;
+    }
+    if (this.queueTimeout) {
+      clearTimeout(this.queueTimeout);
+      this.queueTimeout = null;
+    }
+    if (this.blacklistCleanupInterval) {
+      clearInterval(this.blacklistCleanupInterval);
+      this.blacklistCleanupInterval = null;
+    }
+    this.sendQueue = [];
+    this.isAuthenticated = false;
+    this.deviceState = {
+      lastPingSuccess: Date.now(),
+      consecutivePingFailures: 0,
+    };
+  }
 }

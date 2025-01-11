@@ -1,3 +1,12 @@
+#### 1.6.2(2024-12-24)
+
+Add blacklist for problematic devices
+Add more retries and timeouts.
+
+#### 1.6.1(2024-12-24)
+
+Rebuild release with node 22
+
 #### 1.6.0(2024-12-16)
 
 Handle the longer device model descriptive names of newer Plejd devices.
