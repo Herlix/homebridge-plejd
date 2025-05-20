@@ -110,14 +110,14 @@ export class PlejdService {
 
   private onDiscover = async (peripheral: noble.Peripheral) => {
     if (peripheral.rssi < -90) {
-      this.log.debug(
+      this.log.info(
         `Skipping device with weak signal: ${peripheral.address} (${peripheral.rssi} dB)`,
       );
       return;
     }
 
     if (this.isDeviceBlacklisted(peripheral.address)) {
-      this.log.debug(`Skipping blacklisted device: ${peripheral.address}`);
+      this.log.info(`Skipping blacklisted device: ${peripheral.address}`);
       return;
     }
 
@@ -129,7 +129,7 @@ export class PlejdService {
     this.log.info(
       `Discovered | ${peripheral.advertisement.localName} | addr: ${peripheral.address} | Signal strength: ${this.mapRssiToQuality(peripheral.rssi)} (${peripheral.rssi} dB)`,
     );
-    this.log.debug(`Stopping scan`);
+    this.log.info(`Stopping scan`);
     await noble.stopScanningAsync();
 
     let retryCount = 0;
@@ -153,7 +153,7 @@ export class PlejdService {
           this.cleanup();
           if (retryCount < maxRetries) {
             retryCount++;
-            this.log.debug(`Attempting to reconnect (attempt ${retryCount})`);
+            this.log.info(`Attempting to reconnect (attempt ${retryCount})`);
             await connectWithRetry();
           } else {
             this.log.error("Max reconnection attempts reached. Starting scan.");
@@ -185,7 +185,7 @@ export class PlejdService {
         await this.tryDisconnect(peripheral);
         if (retryCount < maxRetries) {
           retryCount++;
-          this.log.debug(`Attempting to reconnect (attempt ${retryCount})`);
+          this.log.info(`Attempting to reconnect (attempt ${retryCount})`);
           await connectWithRetry();
         } else {
           this.log.error(
@@ -221,7 +221,7 @@ export class PlejdService {
   private discoverCaracteristics = async (
     peripheral: noble.Peripheral,
   ): Promise<noble.Characteristic[]> => {
-    this.log.debug("Discovering characteristics");
+    this.log.info("Discovering characteristics");
     const services = [PlejdCharacteristics.Service];
     const characteristicIds = [
       PlejdCharacteristics.Data,
@@ -235,7 +235,7 @@ export class PlejdService {
         services,
         characteristicIds,
       );
-    this.log.debug("Characteristics discovered");
+    this.log.info("Characteristics discovered");
     return characteristics;
   };
 
@@ -243,7 +243,7 @@ export class PlejdService {
     peripheral: noble.Peripheral,
     characteristics: noble.Characteristic[],
   ) => {
-    this.log.debug("Locating relevant characteristics");
+    this.log.info("Locating relevant characteristics");
     const authChar = characteristics.find(
       (char) => char.uuid === PlejdCharacteristics.Auth,
     );
@@ -303,7 +303,7 @@ export class PlejdService {
         addressBuffer,
         payload,
       );
-      this.log.debug(
+      this.log.info(
         `BLE command sent to ${addressBuffer?.toString("hex") ?? "Unknown"} | ${data.length} bytes | ${data.toString("hex")}`,
       );
 
@@ -316,7 +316,7 @@ export class PlejdService {
         } catch (error) {
           if (retryCount < maxRetries) {
             retryCount++;
-            this.log.debug(`Retrying write (${retryCount}/${maxRetries})`);
+            this.log.info(`Retrying write (${retryCount}/${maxRetries})`);
             await delay(100);
             return tryWrite();
           }
@@ -447,13 +447,13 @@ export class PlejdService {
     dataChar: noble.Characteristic,
     addressBuffer: Buffer,
   ) => {
-    this.log.debug("Setting up ping pong communication with Plejd device");
+    this.log.info("Setting up ping pong communication with Plejd device");
     this.startPlejdPing(peripheral, pingChar);
     this.log.debug("Starting queue handler for messages to Plejd device");
     this.handleQueuedMessages(dataChar, addressBuffer);
 
     try {
-      this.log.debug("Subscribing to incomming messages");
+      this.log.info("Subscribing to incomming messages");
       await race(() => lastDataChar.subscribeAsync());
       lastDataChar.on("data", async (data, isNotification) => {
         await this.handleNotification(data, isNotification, addressBuffer);
@@ -477,7 +477,7 @@ export class PlejdService {
     }
 
     try {
-      this.log.debug("Authenticating to Plejd device");
+      this.log.info("Authenticating to Plejd device");
       await race(() => authChar.writeAsync(Buffer.from([0x00]), false));
       await delay(100);
       const data = await race(() => authChar.readAsync());
@@ -488,7 +488,7 @@ export class PlejdService {
       );
       await delay(100);
 
-      this.log.debug("Authentication successful");
+      this.log.info("Authentication successful");
       this.isAuthenticated = true;
     } catch (e) {
       this.isAuthenticated = false;

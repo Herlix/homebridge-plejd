@@ -52,6 +52,7 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
         true,
       );
       const site = await pApi.getPlejdRemoteSite();
+      this.log.debug(JSON.stringify(site, null, 2));
       this.configureDevices(this.log, this.config, site);
     } else if (
       this.config.crypto_key &&
@@ -72,53 +73,45 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
 
     if (site) {
       config.crypto_key = site.plejdMesh.cryptoKey;
-      const items: Device[] = [];
-      // Extract devices
-      site.devices.forEach((item) => {
-        const name = item.title;
-        const id = item.deviceId;
+      site.devices.forEach((device) => {
+        const name = device.title;
+        const id = device.deviceId;
 
-        const e = site.plejdDevices.find((x) => x.deviceId === id)!;
-        const dim = e.firmware.notes;
+        const plejdDevice = site.plejdDevices.find((x) => x.deviceId === id)!;
+        const model = plejdDevice.firmware.notes;
 
-        if (isAddon(dim)) {
+        if (isAddon(model)) {
+          this.log.info(`Ignoring ${model} as it is not supported for now`);
           return;
         }
 
-        const room = site.rooms.find((x) => x.roomId === item.roomId);
+        const room = site.rooms.find((x) => x.roomId === device.roomId);
 
-        let identifier = site.inputAddress[id]![0]!;
+        let identifier = site.deviceAddress[id]!;
+
+        // When DIM-02, make sure that the next device will have the new index
         if (
-          dim.endsWith("-02") &&
-          items.find((a) => a.identifier === identifier) !== undefined
+          model.toUpperCase().includes("DIM-02") &&
+          devices.find((a) => a.identifier === identifier) !== undefined
         ) {
           identifier += 1;
         }
 
         const res: Device = {
           name: name,
-          model: dim,
+          model: model,
           identifier: identifier,
-          isDimmer: isDimmable(dim),
+          isDimmer: isDimmable(model),
           uuid: this.generateId(identifier.toString()),
           room: room?.title,
           hidden: false,
         };
 
-        items.push(res);
-      });
-
-      items.forEach((item) => {
-        const pre = devices.findIndex((x) => x.identifier === item.identifier);
-        if (pre !== -1) {
-          if (devices[pre].hidden) {
-            log.debug("Hiding device |", devices[pre]);
-            devices.splice(pre);
-          } else {
-            devices[pre].name = item.name;
-          }
+        const pre = devices.findIndex((x) => x.identifier === res.identifier);
+        if (pre !== -1 && devices[pre].hidden) {
+          this.log.info(`${name} is set to hidden. Will ignore device.`);
         } else {
-          devices.push(item);
+          devices.push(res);
         }
       });
     }
