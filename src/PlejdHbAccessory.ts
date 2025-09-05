@@ -1,8 +1,8 @@
-import { Service, PlatformAccessory, CharacteristicValue } from 'homebridge';
-import { Device } from './model/device.js';
+import { Service, PlatformAccessory, CharacteristicValue } from "homebridge";
+import { Device } from "./model/device.js";
 
-import { PlejdHbPlatform } from './PlejdHbPlatform.js';
-import { PLATFORM_NAME } from './settings.js';
+import { PlejdHbPlatform } from "./PlejdHbPlatform.js";
+import { PLATFORM_NAME } from "./settings.js";
 
 interface DeviceState {
   isOn: boolean;
@@ -22,6 +22,7 @@ export class PlejdHbAccessory {
     private readonly platform: PlejdHbPlatform,
     private readonly accessory: PlatformAccessory,
     public readonly device: Device,
+    private readonly brightnessDelayMs?: number,
   ) {
     this.state = {
       brightness: accessory.context.brightness ?? 100,
@@ -70,7 +71,9 @@ export class PlejdHbAccessory {
   }
 
   updateState = (isOn: boolean, brightness?: number) => {
-    this.platform.log.debug(`Updating Homekit state from ${this.device.name} device state`);
+    this.platform.log.debug(
+      `Updating Homekit state from ${this.device.name} device state`,
+    );
     this.state.isOn = isOn;
 
     this.service
@@ -87,19 +90,29 @@ export class PlejdHbAccessory {
     this.accessory.context = this.state;
   };
 
-  private setOn = async (value: CharacteristicValue) => await this.platform.plejdService?.updateState(
-    this.device.identifier,
-    value as boolean,
-    null,
-  );
+  private setOn = async (value: CharacteristicValue) =>
+    await this.platform.plejdService?.updateState(
+      this.device.identifier,
+      value as boolean,
+      {
+        targetBrightness: this.state.brightness,
+        currentBrightness: this.state.brightness,
+        transitionMS: this.brightnessDelayMs,
+      },
+    );
 
   private getOn = (): CharacteristicValue => this.state.isOn;
 
-  private setBrightness = async (value: CharacteristicValue) => await this.platform.plejdService?.updateState(
-    this.device.identifier,
-    this.state.isOn,
-    value as number,
-  );
+  private setBrightness = async (value: CharacteristicValue) =>
+    await this.platform.plejdService?.updateState(
+      this.device.identifier,
+      this.state.isOn,
+      {
+        targetBrightness: value as number,
+        currentBrightness: this.state.brightness,
+        transitionMS: this.brightnessDelayMs,
+      },
+    );
 
   private getBrightness = (): CharacteristicValue => this.state.brightness;
 }

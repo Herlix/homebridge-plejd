@@ -1,14 +1,18 @@
 import { Logger } from "homebridge";
-import { UserInputConfig } from "./model/userInputConfig.js";
+import { UserInputConfig } from "./model/userInputConfig";
 import {
   plejdChalResp as plejdCharResp,
   plejdEncodeDecode,
   reverseBuffer,
-} from "./plejdUtils.js";
+} from "./plejdUtils";
 
 import { randomBytes } from "crypto";
 import noble from "@abandonware/noble";
-import { PLEJD_PING_TIMEOUT, PLEJD_WRITE_TIMEOUT } from "./settings.js";
+import {
+  DEFAULT_BRIGHTNESS_TRANSITION_MS,
+  PLEJD_PING_TIMEOUT,
+  PLEJD_WRITE_TIMEOUT,
+} from "./settings.js";
 import { delay, race } from "./utils.js";
 
 /**
@@ -23,7 +27,7 @@ enum PlejdCharacteristics {
   Ping = "31ba000a60854726be45040c957391b5",
 }
 
-enum PlejdCommand {
+export enum PlejdCommand {
   OnOffState = "0097",
   StateBrightness = "00c8",
   Brightness = "0098", // 0-255
@@ -64,34 +68,64 @@ export class PlejdService {
 
   /**
    *
+   * @returns the current queue items
+   */
+  readQueue(): Buffer[] {
+    return [...this.sendQueue];
+  }
+
+  /**
+   *
    * Update the state of a device
    *
    * @param identifier: The device identifier
    * @param isOn: The new state of the device
-   * @param brightness: The new brightness of the device between 0-100
+   * @param targetBrightness: The new brightness of the device between 0-100
+   * @param currentBrightness: The current brightness of the device between 0-100
+   * @param transitionMS: split brightness into steps, adding a transition to the brightness change
    */
   updateState = async (
     identifier: number,
     isOn: boolean,
-    brightness: number | null,
+    opt: {
+      targetBrightness?: number;
+      currentBrightness?: number;
+      transitionMS?: number;
+    },
   ) => {
-    const payload = Buffer.from(
-      !brightness || brightness === 0
-        ? identifier.toString(16).padStart(2, "0") +
-            PlejdCommand.RequestNoResponse +
-            PlejdCommand.OnOffState +
-            (isOn ? "01" : "00")
-        : identifier.toString(16).padStart(2, "0") +
-            PlejdCommand.RequestNoResponse +
-            PlejdCommand.Brightness +
-            "01" +
-            Math.round(2.55 * brightness)
-              .toString(16)
-              .padStart(4, "0"),
-      "hex",
+    if (isOn === false || !opt.targetBrightness || opt.targetBrightness === 0) {
+      const payload =
+        identifier.toString(16).padStart(2, "0") +
+        PlejdCommand.RequestNoResponse +
+        PlejdCommand.OnOffState +
+        "00";
+      this.sendQueue.unshift(Buffer.from(payload, "hex"));
+      return;
+    }
+
+    if (opt.targetBrightness === opt.currentBrightness) {
+      return;
+    }
+
+    // Plejd 8bit range 0-255, HomeKit uses 0-100
+    const brightnessDiff = Math.round(
+      2.55 * (opt.targetBrightness - (opt.currentBrightness || 0)),
+    );
+    const steps = Math.round(
+      (opt.transitionMS || DEFAULT_BRIGHTNESS_TRANSITION_MS) /
+        PLEJD_WRITE_TIMEOUT,
     );
 
-    this.sendQueue.unshift(payload);
+    const brightnessStep = Math.round(brightnessDiff / steps);
+    for (let x = 0; x < steps; x++) {
+      const payload =
+        identifier.toString(16).padStart(2, "0") +
+        PlejdCommand.RequestNoResponse +
+        PlejdCommand.Brightness +
+        (isOn ? "01" : "00") +
+        brightnessStep.toString(16).padStart(4, "0");
+      this.sendQueue.unshift(Buffer.from(payload, "hex"));
+    }
   };
 
   configureBLE = () => {
@@ -317,7 +351,7 @@ export class PlejdService {
           if (retryCount < maxRetries) {
             retryCount++;
             this.log.info(`Retrying write (${retryCount}/${maxRetries})`);
-            await delay(100);
+            await delay(PLEJD_WRITE_TIMEOUT);
             return tryWrite();
           }
           throw error;

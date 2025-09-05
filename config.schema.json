@@ -33,6 +33,13 @@
       "placeholder": "828291.. or 82-82-91...",
       "description": "With or without '-' "
     },
+    "brightness_delay_ms": {
+      "title": "Brightness delay",
+      "type": "number",
+      "required": false,
+      "placeholder": "1000",
+      "description": "Amount of milliseconds of transition between brightness levels"
+    },
     "devices": {
       "type": "array",
       "items": {

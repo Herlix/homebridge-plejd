@@ -10,6 +10,7 @@ export const PLUGIN_NAME = "homebridge-plejd";
 
 export const PLEJD_WRITE_TIMEOUT = 100;
 export const PLEJD_PING_TIMEOUT = 3000;
+export const DEFAULT_BRIGHTNESS_TRANSITION_MS = 1000;
 
 export const isDimmable = (type: string) => {
   const normalizedType = type.toLowerCase();
