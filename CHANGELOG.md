@@ -1,3 +1,10 @@
+#### 1.7.0-beta(2025-09-11)
+
+Update filter for finding lights
+Refactorings
+Added tests
+Added opt-in brightness transition (Needs propper testing)
+
 #### 1.6.2(2024-12-24)
 
 Add blacklist for problematic devices
