@@ -98,12 +98,27 @@ describe("PlejdService updateState", () => {
 
       await service.updateState(deviceId, true, {
         targetBrightness: brightness,
-      }); // Default transition of 1000ms
-
+        transitionMS: 1000,
+      });
       const queue = service.readQueue();
 
       // With default 1000ms and assuming PLEJD_WRITE_TIMEOUT = 100
       const expectedSteps = 10;
+      expect(queue.length).toBe(expectedSteps);
+    });
+
+    it("should handle a 0-ms transition with default parameters", async () => {
+      const deviceId = 42;
+      const brightness = 100;
+
+      await service.updateState(deviceId, true, {
+        targetBrightness: brightness,
+      });
+
+      const queue = service.readQueue();
+
+      // With default 1000ms and assuming PLEJD_WRITE_TIMEOUT = 100
+      const expectedSteps = 1;
       expect(queue.length).toBe(expectedSteps);
     });
   });

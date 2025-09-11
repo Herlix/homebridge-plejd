@@ -38,7 +38,7 @@
       "type": "number",
       "required": false,
       "placeholder": "1000",
-      "description": "Amount of milliseconds of transition between brightness levels"
+      "description": "Amount of milliseconds of transition between brightness levels (default: 0)"
     },
     "devices": {
       "type": "array",

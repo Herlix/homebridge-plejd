@@ -110,10 +110,9 @@ export class PlejdService {
     const brightnessDiff = Math.round(
       2.55 * (opt.targetBrightness - (opt.currentBrightness || 0)),
     );
-    const steps = Math.round(
-      (opt.transitionMS || DEFAULT_BRIGHTNESS_TRANSITION_MS) /
-        PLEJD_WRITE_TIMEOUT,
-    );
+
+    const trans = opt.transitionMS || DEFAULT_BRIGHTNESS_TRANSITION_MS;
+    const steps = trans > 0 ? Math.round(trans / PLEJD_WRITE_TIMEOUT) : 1;
 
     const brightnessStep = Math.round(brightnessDiff / steps);
     for (let x = 0; x < steps; x++) {
