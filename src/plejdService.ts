@@ -1,19 +1,18 @@
 import { Logger } from "homebridge";
-import { UserInputConfig } from "./model/userInputConfig";
-import {
-  plejdChalResp as plejdCharResp,
-  plejdEncodeDecode,
-  reverseBuffer,
-} from "./plejdUtils";
-
+import { UserInputConfig } from "./model/userInputConfig.js";
 import { randomBytes } from "crypto";
 import noble from "@abandonware/noble";
 import {
   DEFAULT_BRIGHTNESS_TRANSITION_MS,
   PLEJD_PING_TIMEOUT,
   PLEJD_WRITE_TIMEOUT,
-} from "./settings.js";
-import { delay, race } from "./utils.js";
+} from "./constants.js";
+import {
+  delay,
+  race,
+  plejdChallageResp as plejdCharResp,
+  plejdEncodeDecode,
+} from "./utils.js";
 
 /**
  * Plejd BLE UUIDs
@@ -303,9 +302,10 @@ export class PlejdService {
       return;
     }
 
-    const addressBuffer = reverseBuffer(
-      Buffer.from(String(peripheral.address).replace(/:/g, ""), "hex"),
-    );
+    const addressBuffer = Buffer.from(
+      String(peripheral.address).replace(/:/g, ""),
+      "hex",
+    ).reverse();
 
     await this.authenticate(peripheral, authChar);
     await this.setupCommunication(
@@ -438,7 +438,7 @@ export class PlejdService {
     switch (command) {
       case PlejdCommand.Time: {
         const arg = parseInt(
-          reverseBuffer(decodedData.subarray(5, 9)).toString("hex"),
+          Buffer.from(decodedData.subarray(5, 9)).reverse().toString("hex"),
           16,
         );
         const date = new Date(arg * 1000);

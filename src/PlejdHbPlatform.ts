@@ -8,7 +8,8 @@ import {
   Characteristic,
 } from "homebridge";
 
-import { isAddon, isDimmable, PLATFORM_NAME, PLUGIN_NAME } from "./settings.js";
+import { PLATFORM_NAME, PLUGIN_NAME } from "./constants.js";
+import { isDimmable, isAddon } from "./utils.js";
 import { PlejdHbAccessory } from "./PlejdHbAccessory.js";
 import { UserInputConfig } from "./model/userInputConfig.js";
 import { Device } from "./model/device.js";
@@ -192,6 +193,7 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
         this.plejdHbAccessories.push(
           new PlejdHbAccessory(
             this,
+            this.log,
             existingAccessory,
             device,
             parseInt(this.config.brightness_delay_ms),
@@ -213,6 +215,7 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
     this.plejdHbAccessories.push(
       new PlejdHbAccessory(
         this,
+        this.log,
         accessory,
         device,
         parseInt(this.config.brightness_delay_ms),
@@ -274,7 +277,7 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
           ?.updateValue(isOn);
       }
 
-      plejdHbAccessory.updateState(isOn, brightness);
+      plejdHbAccessory.onPlejdUpdates(isOn, brightness);
     } else {
       if (device) {
         this.addNewDevice(device);

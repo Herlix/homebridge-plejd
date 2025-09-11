@@ -11,26 +11,10 @@ export const PLUGIN_NAME = "homebridge-plejd";
 export const PLEJD_WRITE_TIMEOUT = 100;
 export const PLEJD_PING_TIMEOUT = 3000;
 export const DEFAULT_BRIGHTNESS_TRANSITION_MS = 1000;
-
-export const isDimmable = (type: string) => {
-  const normalizedType = type.toLowerCase();
-  // Check if the model starts with any of the basic dimmer types
-  return PLEJD_LIGHTS.some(
-    (light) =>
-      normalizedType.includes(light.toLowerCase()) ||
-      normalizedType.includes("dim"),
-  );
-};
-
-export const isAddon = (type: string) =>
-  !!PLEJD_ADDONS.find((addon) =>
-    type.toLowerCase().includes(addon.toLowerCase()),
-  );
-
 /**
  * Lights and switches from Plejd
  */
-const PLEJD_LIGHTS = ["DIM-01", "DIM-02", "LED-10", "LED-75"];
+export const PLEJD_LIGHTS = ["DIM-01", "DIM-02", "LED-10", "LED-75"];
 
 // const PLEJD_SWITCHES = [
 //   "REL-01",
@@ -41,7 +25,7 @@ const PLEJD_LIGHTS = ["DIM-01", "DIM-02", "LED-10", "LED-75"];
 //   "CTR-01",
 // ];
 
-const PLEJD_ADDONS = [
+export const PLEJD_ADDONS = [
   "RTR-01",
   "WPH-01",
   "WRT-01",

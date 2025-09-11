@@ -1,8 +1,13 @@
-import { Service, PlatformAccessory, CharacteristicValue } from "homebridge";
+import {
+  Service,
+  PlatformAccessory,
+  CharacteristicValue,
+  Logger,
+} from "homebridge";
 import { Device } from "./model/device.js";
 
 import { PlejdHbPlatform } from "./PlejdHbPlatform.js";
-import { PLATFORM_NAME } from "./settings.js";
+import { PLATFORM_NAME } from "./constants.js";
 
 interface DeviceState {
   isOn: boolean;
@@ -20,6 +25,7 @@ export class PlejdHbAccessory {
 
   constructor(
     private readonly platform: PlejdHbPlatform,
+    private readonly log: Logger,
     private readonly accessory: PlatformAccessory,
     public readonly device: Device,
     private readonly brightnessDelayMs?: number,
@@ -70,7 +76,7 @@ export class PlejdHbAccessory {
     );
   }
 
-  updateState = (isOn: boolean, brightness?: number) => {
+  onPlejdUpdates = (isOn: boolean, brightness?: number) => {
     this.platform.log.debug(
       `Updating Homekit state from ${this.device.name} device state`,
     );
@@ -90,7 +96,8 @@ export class PlejdHbAccessory {
     this.accessory.context = this.state;
   };
 
-  private setOn = async (value: CharacteristicValue) =>
+  private setOn = async (value: CharacteristicValue) => {
+    this.log.debug(`Homekit: Turn on ${this.device.name}`);
     await this.platform.plejdService?.updateState(
       this.device.identifier,
       value as boolean,
@@ -100,10 +107,12 @@ export class PlejdHbAccessory {
         transitionMS: this.brightnessDelayMs,
       },
     );
+  };
 
   private getOn = (): CharacteristicValue => this.state.isOn;
 
-  private setBrightness = async (value: CharacteristicValue) =>
+  private setBrightness = async (value: CharacteristicValue) => {
+    this.log.debug(`Homekit: Set brightness of ${this.device.name}`);
     await this.platform.plejdService?.updateState(
       this.device.identifier,
       this.state.isOn,
@@ -113,6 +122,7 @@ export class PlejdHbAccessory {
         transitionMS: this.brightnessDelayMs,
       },
     );
+  };
 
   private getBrightness = (): CharacteristicValue => this.state.brightness;
 }

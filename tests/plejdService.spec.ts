@@ -1,6 +1,6 @@
 import { Logger } from "homebridge/lib/logger";
 import { PlejdCommand, PlejdService } from "../src/plejdService";
-import { PLEJD_WRITE_TIMEOUT } from "../src/settings";
+import { PLEJD_WRITE_TIMEOUT } from "../src/constants";
 
 describe("PlejdService updateState", () => {
   let service: PlejdService;
