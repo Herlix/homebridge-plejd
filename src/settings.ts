@@ -22,14 +22,10 @@ export const isDimmable = (type: string) => {
   );
 };
 
-export const isAddon = (type: string) => {
-  for (const x of PLEJD_ADDONS) {
-    if (type.toLowerCase().includes(x.toLowerCase())) {
-      return true;
-    }
-  }
-  return false;
-};
+export const isAddon = (type: string) =>
+  !!PLEJD_ADDONS.find((addon) =>
+    type.toLowerCase().includes(addon.toLowerCase()),
+  );
 
 /**
  * Lights and switches from Plejd
