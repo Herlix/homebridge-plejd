@@ -1,3 +1,7 @@
+#### 1.7.0-beta-1(2025-09-11)
+
+Migrated to characteristict SetDuration
+
 #### 1.7.0-beta(2025-09-11)
 
 Update filter for finding lights

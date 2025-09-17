@@ -7,11 +7,15 @@ import {
 import { Device } from "./model/device.js";
 
 import { PlejdHbPlatform } from "./PlejdHbPlatform.js";
-import { PLATFORM_NAME } from "./constants.js";
+import {
+  DEFAULT_BRIGHTNESS_TRANSITION_MS,
+  PLATFORM_NAME,
+} from "./constants.js";
 
 interface DeviceState {
   isOn: boolean;
   brightness: number;
+  transitionDuration: number;
 }
 
 /**
@@ -28,11 +32,11 @@ export class PlejdHbAccessory {
     private readonly log: Logger,
     private readonly accessory: PlatformAccessory,
     public readonly device: Device,
-    private readonly brightnessDelayMs?: number,
   ) {
     this.state = {
       brightness: accessory.context.brightness ?? 100,
       isOn: accessory.context.isOn ?? false,
+      transitionDuration: accessory.context.transitionDuration ?? 0,
     };
 
     // set accessory information
@@ -53,6 +57,23 @@ export class PlejdHbAccessory {
       this.service =
         this.accessory.getService(this.platform.Service.Lightbulb) ||
         this.accessory.addService(this.platform.Service.Lightbulb);
+
+      const durationChar =
+        this.service.getCharacteristic(
+          this.platform.Characteristic.SetDuration,
+        ) ||
+        this.service.addCharacteristic(
+          this.platform.Characteristic.SetDuration,
+        );
+
+      durationChar
+        .setProps({
+          minValue: 0,
+          maxValue: 3600000,
+          minStep: 100,
+        })
+        .onSet(this.setTransitionDuration.bind(this))
+        .onGet(this.getTransitionDuration.bind(this));
 
       this.service
         .getCharacteristic(this.platform.Characteristic.Brightness)
@@ -97,32 +118,60 @@ export class PlejdHbAccessory {
   };
 
   private setOn = async (value: CharacteristicValue) => {
-    this.log.debug(`Homekit: Turn on ${this.device.name}`);
+    const newState = value as boolean;
+    this.log.info(
+      `Homekit: turning ${value === true ? "on" : "off"} ${this.device.name} (current state: isOn=${this.state.isOn}, brightness=${this.state.brightness})`,
+    );
+
+    if (this.state.isOn === newState) {
+      this.log.debug(
+        `${this.device.name} already ${newState ? "on" : "off"}, skipping`,
+      );
+      return;
+    }
+
     await this.platform.plejdService?.updateState(
       this.device.identifier,
       value as boolean,
-      {
-        targetBrightness: this.state.brightness,
-        currentBrightness: this.state.brightness,
-        transitionMS: this.brightnessDelayMs,
-      },
     );
+    this.state.isOn = value as boolean;
   };
 
   private getOn = (): CharacteristicValue => this.state.isOn;
 
   private setBrightness = async (value: CharacteristicValue) => {
-    this.log.debug(`Homekit: Set brightness of ${this.device.name}`);
+    this.log.debug(
+      `Homekit: Set brightness of ${this.device.name} to ${value}`,
+    );
+    const transitionMs =
+      this.state.transitionDuration > 0
+        ? this.state.transitionDuration
+        : DEFAULT_BRIGHTNESS_TRANSITION_MS;
+
     await this.platform.plejdService?.updateState(
       this.device.identifier,
-      this.state.isOn,
+      true,
       {
         targetBrightness: value as number,
         currentBrightness: this.state.brightness,
-        transitionMS: this.brightnessDelayMs,
+        transitionMs,
       },
     );
+
+    this.state.brightness = value as number;
+    this.state.isOn = true;
   };
 
   private getBrightness = (): CharacteristicValue => this.state.brightness;
+
+  private setTransitionDuration = async (value: CharacteristicValue) => {
+    this.state.transitionDuration = value as number;
+    this.accessory.context.transitionDuration = this.state.transitionDuration;
+    this.log.debug(
+      `Set transition duration for ${this.device.name} to ${value}ms`,
+    );
+  };
+
+  private getTransitionDuration = (): CharacteristicValue =>
+    this.state.transitionDuration;
 }

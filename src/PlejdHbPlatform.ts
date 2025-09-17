@@ -191,13 +191,7 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
 
       if (existingAccessory) {
         this.plejdHbAccessories.push(
-          new PlejdHbAccessory(
-            this,
-            this.log,
-            existingAccessory,
-            device,
-            parseInt(this.config.brightness_delay_ms),
-          ),
+          new PlejdHbAccessory(this, this.log, existingAccessory, device),
         );
       } else {
         this.addNewDevice(device);
@@ -213,13 +207,7 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
     accessory.context.device = device;
     // See above.
     this.plejdHbAccessories.push(
-      new PlejdHbAccessory(
-        this,
-        this.log,
-        accessory,
-        device,
-        parseInt(this.config.brightness_delay_ms),
-      ),
+      new PlejdHbAccessory(this, this.log, accessory, device),
     );
 
     // link the accessory to your platform

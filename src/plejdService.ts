@@ -78,50 +78,72 @@ export class PlejdService {
    * Update the state of a device
    *
    * @param identifier: The device identifier
-   * @param isOn: The new state of the device
+   * @param turnOn: The new state of the device
    * @param targetBrightness: The new brightness of the device between 0-100
    * @param currentBrightness: The current brightness of the device between 0-100
    * @param transitionMS: split brightness into steps, adding a transition to the brightness change
    */
   updateState = async (
     identifier: number,
-    isOn: boolean,
+    turnOn: boolean,
     opt: {
       targetBrightness?: number;
       currentBrightness?: number;
-      transitionMS?: number;
-    },
+      transitionMs?: number;
+    } = {},
   ) => {
-    if (isOn === false || !opt.targetBrightness || opt.targetBrightness === 0) {
+    const deviceIdHex = identifier.toString(16).padStart(2, "0");
+    const brightnessCommandPrefix =
+      deviceIdHex + PlejdCommand.RequestNoResponse + PlejdCommand.Brightness;
+
+    this.sendQueue = this.sendQueue.filter(
+      (cmd) =>
+        !cmd.toString("hex").startsWith(brightnessCommandPrefix.toLowerCase()),
+    );
+
+    if (!turnOn || !opt.targetBrightness || opt.targetBrightness === 0) {
       const payload =
-        identifier.toString(16).padStart(2, "0") +
+        deviceIdHex +
         PlejdCommand.RequestNoResponse +
         PlejdCommand.OnOffState +
-        "00";
+        (turnOn ? "01" : "00");
+      this.log.debug(
+        `BLE: Turning ${turnOn ? "on" : "off"} device ${identifier}`,
+      );
       this.sendQueue.unshift(Buffer.from(payload, "hex"));
       return;
     }
 
-    if (opt.targetBrightness === opt.currentBrightness) {
+    if (
+      opt.targetBrightness &&
+      opt.targetBrightness === opt.currentBrightness
+    ) {
       return;
     }
 
-    // Plejd 8bit range 0-255, HomeKit uses 0-100
-    const brightnessDiff = Math.round(
-      2.55 * (opt.targetBrightness - (opt.currentBrightness || 0)),
-    );
-
-    const trans = opt.transitionMS || DEFAULT_BRIGHTNESS_TRANSITION_MS;
+    const trans = opt.transitionMs || DEFAULT_BRIGHTNESS_TRANSITION_MS;
     const steps = trans > 0 ? Math.round(trans / PLEJD_WRITE_TIMEOUT) : 1;
 
-    const brightnessStep = Math.round(brightnessDiff / steps);
-    for (let x = 0; x < steps; x++) {
+    this.log.debug(
+      `BLE: Setting brightness for device ${identifier} to ${opt.targetBrightness}% over ${trans}ms in ${steps} steps`,
+    );
+
+    const startBrightness = opt.currentBrightness || 0;
+    const brightnessDifference = opt.targetBrightness - startBrightness;
+    for (let step = 1; step <= steps; step++) {
+      const currentStepBrightness = Math.min(
+        100,
+        Math.max(0, startBrightness + (brightnessDifference * step) / steps),
+      );
+      const eightBitBrightness = Math.round(currentStepBrightness * 2.55);
+
       const payload =
-        identifier.toString(16).padStart(2, "0") +
+        deviceIdHex +
         PlejdCommand.RequestNoResponse +
         PlejdCommand.Brightness +
-        (isOn ? "01" : "00") +
-        brightnessStep.toString(16).padStart(4, "0");
+        "01" +
+        eightBitBrightness.toString(16).padStart(4, "0");
+
       this.sendQueue.unshift(Buffer.from(payload, "hex"));
     }
   };
