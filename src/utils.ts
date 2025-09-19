@@ -1,5 +1,5 @@
 import { createCipheriv, createHash } from "crypto";
-import { PLEJD_LIGHTS, PLEJD_ADDONS } from "./constants.js";
+import { PLEJD_LIGHTS, PLEJD_ADDONS, PLEJD_SWITCHES } from "./constants.js";
 
 export const delay = (ms: number) =>
   new Promise((resolve) => setTimeout(resolve, ms));
@@ -68,6 +68,11 @@ export const isDimmable = (type: string) => {
 export const isAddon = (type: string) =>
   !!PLEJD_ADDONS.find((addon) =>
     type.toLowerCase().includes(addon.toLowerCase()),
+  );
+
+export const isSwitch = (type: string) =>
+  !!PLEJD_SWITCHES.find((switchType) =>
+    type.toLowerCase().includes(switchType.toLowerCase()),
   );
 
 const xor = (first: Buffer, second: Buffer): Buffer => {

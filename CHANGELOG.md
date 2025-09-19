@@ -1,6 +1,11 @@
-#### 1.7.0-beta-1(2025-09-11)
+#### 1.7.0-beta-2(2025-09-16)
 
-Migrated to characteristict SetDuration
+Removed characteristic connection in favor of settings.
+Reduced message simeout for BLE commands
+
+#### 1.7.0-beta-1(2025-09-16)
+
+Migrated to characteristic SetDuration
 
 #### 1.7.0-beta(2025-09-11)
 

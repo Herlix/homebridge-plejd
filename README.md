@@ -64,6 +64,10 @@ This plugin lacks testing for multiple platforms. Feel free to test on your syst
 
 Feel free to open a ticket if you can't get it working.
 
+The underlying protocol is relying on the BLE address to be exposed. This is not available on mac, meaning this app won't work on mac for now. There might be workarounds for this.
+
+I do not own all hardware from Plejd, this means I have not been able to make sure that it all works. However, feel free to add a PR. I'd like to add switches and sensors, this is not yet available as I do not own any of these.
+
 ## Thanks
 
 Big thanks to:

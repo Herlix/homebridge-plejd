@@ -7,15 +7,12 @@ import {
 import { Device } from "./model/device.js";
 
 import { PlejdHbPlatform } from "./PlejdHbPlatform.js";
-import {
-  DEFAULT_BRIGHTNESS_TRANSITION_MS,
-  PLATFORM_NAME,
-} from "./constants.js";
+import { PLATFORM_NAME } from "./constants.js";
 
 interface DeviceState {
   isOn: boolean;
   brightness: number;
-  transitionDuration: number;
+  transitionMs: number;
 }
 
 /**
@@ -32,11 +29,12 @@ export class PlejdHbAccessory {
     private readonly log: Logger,
     private readonly accessory: PlatformAccessory,
     public readonly device: Device,
+    private readonly transitionMs: number,
   ) {
     this.state = {
       brightness: accessory.context.brightness ?? 100,
       isOn: accessory.context.isOn ?? false,
-      transitionDuration: accessory.context.transitionDuration ?? 0,
+      transitionMs,
     };
 
     // set accessory information
@@ -53,27 +51,9 @@ export class PlejdHbAccessory {
       );
 
     if (this.device.isDimmer) {
-      // get the LightBulb service if it exists, otherwise create a new LightBulb service
       this.service =
         this.accessory.getService(this.platform.Service.Lightbulb) ||
         this.accessory.addService(this.platform.Service.Lightbulb);
-
-      const durationChar =
-        this.service.getCharacteristic(
-          this.platform.Characteristic.SetDuration,
-        ) ||
-        this.service.addCharacteristic(
-          this.platform.Characteristic.SetDuration,
-        );
-
-      durationChar
-        .setProps({
-          minValue: 0,
-          maxValue: 3600000,
-          minStep: 100,
-        })
-        .onSet(this.setTransitionDuration.bind(this))
-        .onGet(this.getTransitionDuration.bind(this));
 
       this.service
         .getCharacteristic(this.platform.Characteristic.Brightness)
@@ -143,18 +123,13 @@ export class PlejdHbAccessory {
     this.log.debug(
       `Homekit: Set brightness of ${this.device.name} to ${value}`,
     );
-    const transitionMs =
-      this.state.transitionDuration > 0
-        ? this.state.transitionDuration
-        : DEFAULT_BRIGHTNESS_TRANSITION_MS;
-
     await this.platform.plejdService?.updateState(
       this.device.identifier,
       true,
       {
         targetBrightness: value as number,
         currentBrightness: this.state.brightness,
-        transitionMs,
+        transitionMs: this.transitionMs,
       },
     );
 
@@ -163,15 +138,4 @@ export class PlejdHbAccessory {
   };
 
   private getBrightness = (): CharacteristicValue => this.state.brightness;
-
-  private setTransitionDuration = async (value: CharacteristicValue) => {
-    this.state.transitionDuration = value as number;
-    this.accessory.context.transitionDuration = this.state.transitionDuration;
-    this.log.debug(
-      `Set transition duration for ${this.device.name} to ${value}ms`,
-    );
-  };
-
-  private getTransitionDuration = (): CharacteristicValue =>
-    this.state.transitionDuration;
 }

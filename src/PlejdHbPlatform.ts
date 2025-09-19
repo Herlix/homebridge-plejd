@@ -8,8 +8,12 @@ import {
   Characteristic,
 } from "homebridge";
 
-import { PLATFORM_NAME, PLUGIN_NAME } from "./constants.js";
-import { isDimmable, isAddon } from "./utils.js";
+import {
+  DEFAULT_BRIGHTNESS_TRANSITION_MS,
+  PLATFORM_NAME,
+  PLUGIN_NAME,
+} from "./constants.js";
+import { isDimmable, isAddon, isSwitch } from "./utils.js";
 import { PlejdHbAccessory } from "./PlejdHbAccessory.js";
 import { UserInputConfig } from "./model/userInputConfig.js";
 import { Device } from "./model/device.js";
@@ -28,6 +32,7 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
   public readonly accessories: PlatformAccessory[] = [];
 
   public readonly plejdHbAccessories: PlejdHbAccessory[] = [];
+  private readonly transitionMs: number;
 
   constructor(
     public readonly log: Logger,
@@ -37,6 +42,9 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
     homebridgeApi.on("didFinishLaunching", this.configurePlejd);
     this.Characteristic = homebridgeApi.hap.Characteristic;
     this.Service = homebridgeApi.hap.Service;
+
+    this.transitionMs =
+      config.transition_ms ?? DEFAULT_BRIGHTNESS_TRANSITION_MS;
   }
 
   configurePlejd = async () => {
@@ -81,8 +89,10 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
         const plejdDevice = site.plejdDevices.find((x) => x.deviceId === id)!;
         const model = plejdDevice.firmware.notes;
 
-        if (isAddon(model)) {
-          this.log.info(`Ignoring ${model} as it is not supported for now`);
+        if (isAddon(model) || isSwitch(model)) {
+          this.log.info(
+            `Ignoring ${model} as it is not supported for now, help with this is needed`,
+          );
           return;
         }
 
@@ -191,7 +201,13 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
 
       if (existingAccessory) {
         this.plejdHbAccessories.push(
-          new PlejdHbAccessory(this, this.log, existingAccessory, device),
+          new PlejdHbAccessory(
+            this,
+            this.log,
+            existingAccessory,
+            device,
+            this.transitionMs,
+          ),
         );
       } else {
         this.addNewDevice(device);
@@ -207,7 +223,13 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
     accessory.context.device = device;
     // See above.
     this.plejdHbAccessories.push(
-      new PlejdHbAccessory(this, this.log, accessory, device),
+      new PlejdHbAccessory(
+        this,
+        this.log,
+        accessory,
+        device,
+        this.transitionMs,
+      ),
     );
 
     // link the accessory to your platform

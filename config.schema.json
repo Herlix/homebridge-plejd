@@ -33,6 +33,13 @@
       "placeholder": "828291.. or 82-82-91...",
       "description": "With or without '-' "
     },
+    "transition_ms": {
+      "title": "Add transition when changing brightness levels (Note: Not for on/off to reduce flickering with button actions)",
+      "type": "number",
+      "required": false,
+      "placeholder": "1000",
+      "description": "Amount of milliseconds of transitioning brightness"
+    },
     "devices": {
       "type": "array",
       "items": {
