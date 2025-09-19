@@ -203,7 +203,6 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
         this.plejdHbAccessories.push(
           new PlejdHbAccessory(
             this,
-            this.log,
             existingAccessory,
             device,
             this.transitionMs,
@@ -223,13 +222,7 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
     accessory.context.device = device;
     // See above.
     this.plejdHbAccessories.push(
-      new PlejdHbAccessory(
-        this,
-        this.log,
-        accessory,
-        device,
-        this.transitionMs,
-      ),
+      new PlejdHbAccessory(this, accessory, device, this.transitionMs),
     );
 
     // link the accessory to your platform

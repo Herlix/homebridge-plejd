@@ -1,18 +1,10 @@
-#### 1.7.0-beta-2(2025-09-16)
+#### 1.7.0 (2025-09-19)
 
-Removed characteristic connection in favor of settings.
-Reduced message simeout for BLE commands
-
-#### 1.7.0-beta-1(2025-09-16)
-
-Migrated to characteristic SetDuration
-
-#### 1.7.0-beta(2025-09-11)
-
+Reduced message timeout for BLE commands
 Update filter for finding lights
 Refactorings
 Added tests
-Added opt-in brightness transition (Needs propper testing)
+Added opt-in brightness transition when light is on
 
 #### 1.6.2(2024-12-24)
 

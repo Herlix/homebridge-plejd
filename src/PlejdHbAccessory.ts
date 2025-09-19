@@ -1,9 +1,4 @@
-import {
-  Service,
-  PlatformAccessory,
-  CharacteristicValue,
-  Logger,
-} from "homebridge";
+import { Service, PlatformAccessory, CharacteristicValue } from "homebridge";
 import { Device } from "./model/device.js";
 
 import { PlejdHbPlatform } from "./PlejdHbPlatform.js";
@@ -26,7 +21,6 @@ export class PlejdHbAccessory {
 
   constructor(
     private readonly platform: PlejdHbPlatform,
-    private readonly log: Logger,
     private readonly accessory: PlatformAccessory,
     public readonly device: Device,
     private readonly transitionMs: number,
@@ -99,12 +93,12 @@ export class PlejdHbAccessory {
 
   private setOn = async (value: CharacteristicValue) => {
     const newState = value as boolean;
-    this.log.info(
+    this.platform.log.debug(
       `Homekit: turning ${value === true ? "on" : "off"} ${this.device.name} (current state: isOn=${this.state.isOn}, brightness=${this.state.brightness})`,
     );
 
     if (this.state.isOn === newState) {
-      this.log.debug(
+      this.platform.log.debug(
         `${this.device.name} already ${newState ? "on" : "off"}, skipping`,
       );
       return;
@@ -120,7 +114,7 @@ export class PlejdHbAccessory {
   private getOn = (): CharacteristicValue => this.state.isOn;
 
   private setBrightness = async (value: CharacteristicValue) => {
-    this.log.debug(
+    this.platform.log.debug(
       `Homekit: Set brightness of ${this.device.name} to ${value}`,
     );
     await this.platform.plejdService?.updateState(

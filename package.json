@@ -3,7 +3,7 @@
   "displayName": "Plejd",
   "name": "homebridge-plejd",
   "author": "Herlix",
-  "version": "1.7.0-beta-2",
+  "version": "1.7.0",
   "description": "HomeKit support for the Plejd BLE platform using Homebridge",
   "license": "Apache-2.0",
   "type": "module",
@@ -24,7 +24,8 @@
     "dev": "npm run build && npm link && nodemon",
     "build": "rimraf ./dist && tsc",
     "prepublishOnly": "npm run lint && npm run build",
-    "test": "jest ./**/*.spec.* --detectOpenHandles --forceExit --silent=false"
+    "test": "jest ./**/*.spec.* --detectOpenHandles --forceExit --silent=false",
+    "test:watch": "jest ./**/*.spec.* --detectOpenHandles --forceExit --silent=false --watch"
   },
   "keywords": [
     "homebridge-plugin",

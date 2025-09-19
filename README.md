@@ -60,6 +60,8 @@ Device info can be found like [this](./docs/Device%20Info.md)!
 
 ### Notes
 
+I'm maintaining this plugin on my spare time and I use it daily. Though I do not have much time due to children and life. Feel free to help out in any way.
+
 This plugin lacks testing for multiple platforms. Feel free to test on your system. The main dependency [@abandonware/Noble](https://github.com/abandonware/noble) is your guide in case of your separate system. Usually BLE is the problem.
 
 Feel free to open a ticket if you can't get it working.

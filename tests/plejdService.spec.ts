@@ -16,14 +16,19 @@ describe("PlejdService updateState", () => {
     );
   });
 
-  describe("Turn off scenarios", () => {
+  describe("Turn on/off scenarios", () => {
     it.each([
       ["isOn=false, brightness=undefined", false, undefined],
       ["isOn=false, brightness=0", false, 0],
       ["isOn=true, brightness=0", true, 0],
       ["isOn=true, brightness=undefined", true, undefined],
+      ["isOn=true, brightness=0", true, 0],
+      // ["isOn=true, brightness=1 (Not needed due to brightness change)", true, 1],
     ])("%s should queue a turn off command", async (_, isOn, brightness) => {
       const deviceId = 42;
+      const refQueue = service.readQueue();
+      expect(refQueue.length).toBe(0);
+
       await service.updateState(deviceId, isOn, {
         targetBrightness: brightness,
       });
@@ -36,7 +41,7 @@ describe("PlejdService updateState", () => {
         deviceId.toString(16).padStart(2, "0") +
         PlejdCommand.RequestNoResponse +
         PlejdCommand.OnOffState +
-        "00";
+        (isOn ? "01" : "00");
 
       expect(command).toBe(expected);
     });
@@ -50,7 +55,7 @@ describe("PlejdService updateState", () => {
       await service.updateState(deviceId, true, {
         currentBrightness: brightness,
         targetBrightness: brightness,
-        transitionMS: transitionMS,
+        transitionMs: transitionMS,
       });
       const queue = service.readQueue();
       expect(queue.length).toBe(0);
@@ -58,21 +63,21 @@ describe("PlejdService updateState", () => {
 
     it("should queue multiple brightness commands for a transition", async () => {
       const deviceId = 42;
-      const brightness = 50; // 50% brightness
-      const transitionMS = 500;
+      const currentBrightness = 10;
+      const targetBrightness = 70;
+      const transitionMs = 500;
 
       await service.updateState(deviceId, true, {
-        targetBrightness: brightness,
-        transitionMS: transitionMS,
+        targetBrightness,
+        currentBrightness,
+        transitionMs,
       });
 
       const queue = service.readQueue();
 
-      // Calculate expected number of steps
-      const expectedSteps = Math.round(transitionMS / PLEJD_WRITE_TIMEOUT);
+      const expectedSteps = Math.round(transitionMs / PLEJD_WRITE_TIMEOUT);
       expect(queue.length).toBe(expectedSteps);
 
-      // Check that all commands are brightness commands
       queue.forEach((item) => {
         const command = item.toString("hex");
         expect(command.substring(2, 6)).toBe(PlejdCommand.RequestNoResponse);
@@ -80,16 +85,22 @@ describe("PlejdService updateState", () => {
         expect(command.substring(10, 14)).toBe("0100"); // isOn = true
       });
 
-      // Check that the brightness is distributed correctly
-      const newBrightness = Math.round(2.55 * brightness);
-      const brightnessStep = Math.round(newBrightness / expectedSteps);
-
-      queue.forEach((item) => {
+      for (let step = 1; step <= expectedSteps; step++) {
+        const brightnessDifference = targetBrightness - currentBrightness;
+        const currentStepBrightness = Math.min(
+          100,
+          Math.max(
+            0,
+            currentBrightness + (brightnessDifference * step) / expectedSteps,
+          ),
+        );
+        const eightBitBrightness = Math.round(currentStepBrightness * 2.55);
+        const item = queue[expectedSteps - step];
         const command = item.toString("hex");
         const brightnessHex = command.substring(14, 18);
         const brightnessValue = parseInt(brightnessHex, 16);
-        expect(brightnessValue).toBe(brightnessStep);
-      });
+        expect(brightnessValue).toBe(eightBitBrightness);
+      }
     });
 
     it("should handle a 1-second transition with default parameters", async () => {
@@ -98,13 +109,11 @@ describe("PlejdService updateState", () => {
 
       await service.updateState(deviceId, true, {
         targetBrightness: brightness,
-        transitionMS: 1000,
+        transitionMs: 1000,
       });
       const queue = service.readQueue();
 
-      // With default 1000ms and assuming PLEJD_WRITE_TIMEOUT = 100
-      const expectedSteps = 10;
-      expect(queue.length).toBe(expectedSteps);
+      expect(queue.length).toBe(1000 / PLEJD_WRITE_TIMEOUT);
     });
 
     it("should handle a 0-ms transition with default parameters", async () => {
