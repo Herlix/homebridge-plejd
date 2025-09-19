@@ -1,15 +1,18 @@
 import { Logger } from "homebridge";
 import { UserInputConfig } from "./model/userInputConfig.js";
-import {
-  plejdChalResp as plejdCharResp,
-  plejdEncodeDecode,
-  reverseBuffer,
-} from "./plejdUtils.js";
-
 import { randomBytes } from "crypto";
 import noble from "@abandonware/noble";
-import { PLEJD_PING_TIMEOUT, PLEJD_WRITE_TIMEOUT } from "./settings.js";
-import { delay, race } from "./utils.js";
+import {
+  DEFAULT_BRIGHTNESS_TRANSITION_MS,
+  PLEJD_PING_TIMEOUT,
+  PLEJD_WRITE_TIMEOUT,
+} from "./constants.js";
+import {
+  delay,
+  race,
+  plejdChallageResp as plejdCharResp,
+  plejdEncodeDecode,
+} from "./utils.js";
 
 /**
  * Plejd BLE UUIDs
@@ -23,7 +26,7 @@ enum PlejdCharacteristics {
   Ping = "31ba000a60854726be45040c957391b5",
 }
 
-enum PlejdCommand {
+export enum PlejdCommand {
   OnOffState = "0097",
   StateBrightness = "00c8",
   Brightness = "0098", // 0-255
@@ -64,34 +67,85 @@ export class PlejdService {
 
   /**
    *
+   * @returns the current queue items
+   */
+  readQueue(): Buffer[] {
+    return [...this.sendQueue];
+  }
+
+  /**
+   *
    * Update the state of a device
    *
    * @param identifier: The device identifier
-   * @param isOn: The new state of the device
-   * @param brightness: The new brightness of the device between 0-100
+   * @param turnOn: The new state of the device
+   * @param targetBrightness: The new brightness of the device between 0-100
+   * @param currentBrightness: The current brightness of the device between 0-100
+   * @param transitionMS: split brightness into steps, adding a transition to the brightness change
    */
   updateState = async (
     identifier: number,
-    isOn: boolean,
-    brightness: number | null,
+    turnOn: boolean,
+    opt: {
+      targetBrightness?: number;
+      currentBrightness?: number;
+      transitionMs?: number;
+    } = {},
   ) => {
-    const payload = Buffer.from(
-      !brightness || brightness === 0
-        ? identifier.toString(16).padStart(2, "0") +
-            PlejdCommand.RequestNoResponse +
-            PlejdCommand.OnOffState +
-            (isOn ? "01" : "00")
-        : identifier.toString(16).padStart(2, "0") +
-            PlejdCommand.RequestNoResponse +
-            PlejdCommand.Brightness +
-            "01" +
-            Math.round(2.55 * brightness)
-              .toString(16)
-              .padStart(4, "0"),
-      "hex",
+    const deviceIdHex = identifier.toString(16).padStart(2, "0");
+    const brightnessCommandPrefix =
+      deviceIdHex + PlejdCommand.RequestNoResponse + PlejdCommand.Brightness;
+
+    this.sendQueue = this.sendQueue.filter(
+      (cmd) =>
+        !cmd.toString("hex").startsWith(brightnessCommandPrefix.toLowerCase()),
     );
 
-    this.sendQueue.unshift(payload);
+    if (!turnOn || !opt.targetBrightness || opt.targetBrightness === 0) {
+      const payload =
+        deviceIdHex +
+        PlejdCommand.RequestNoResponse +
+        PlejdCommand.OnOffState +
+        (turnOn ? "01" : "00");
+      this.log.debug(
+        `BLE: Turning ${turnOn ? "on" : "off"} device ${identifier}`,
+      );
+      this.sendQueue.unshift(Buffer.from(payload, "hex"));
+      return;
+    }
+
+    if (
+      opt.targetBrightness &&
+      opt.targetBrightness === opt.currentBrightness
+    ) {
+      return;
+    }
+
+    const trans = opt.transitionMs || DEFAULT_BRIGHTNESS_TRANSITION_MS;
+    const steps = trans > 0 ? Math.round(trans / PLEJD_WRITE_TIMEOUT) : 1;
+
+    this.log.debug(
+      `BLE: Setting brightness for device ${identifier} to ${opt.targetBrightness}% over ${trans}ms in ${steps} steps`,
+    );
+
+    const startBrightness = opt.currentBrightness || 0;
+    const brightnessDifference = opt.targetBrightness - startBrightness;
+    for (let step = 1; step <= steps; step++) {
+      const currentStepBrightness = Math.min(
+        100,
+        Math.max(0, startBrightness + (brightnessDifference * step) / steps),
+      );
+      const eightBitBrightness = Math.round(currentStepBrightness * 2.55);
+
+      const payload =
+        deviceIdHex +
+        PlejdCommand.RequestNoResponse +
+        PlejdCommand.Brightness +
+        "01" +
+        eightBitBrightness.toString(16).padStart(4, "0");
+
+      this.sendQueue.unshift(Buffer.from(payload, "hex"));
+    }
   };
 
   configureBLE = () => {
@@ -269,9 +323,10 @@ export class PlejdService {
       return;
     }
 
-    const addressBuffer = reverseBuffer(
-      Buffer.from(String(peripheral.address).replace(/:/g, ""), "hex"),
-    );
+    const addressBuffer = Buffer.from(
+      String(peripheral.address).replace(/:/g, ""),
+      "hex",
+    ).reverse();
 
     await this.authenticate(peripheral, authChar);
     await this.setupCommunication(
@@ -317,7 +372,7 @@ export class PlejdService {
           if (retryCount < maxRetries) {
             retryCount++;
             this.log.info(`Retrying write (${retryCount}/${maxRetries})`);
-            await delay(100);
+            await delay(PLEJD_WRITE_TIMEOUT);
             return tryWrite();
           }
           throw error;
@@ -404,7 +459,7 @@ export class PlejdService {
     switch (command) {
       case PlejdCommand.Time: {
         const arg = parseInt(
-          reverseBuffer(decodedData.subarray(5, 9)).toString("hex"),
+          Buffer.from(decodedData.subarray(5, 9)).reverse().toString("hex"),
           16,
         );
         const date = new Date(arg * 1000);

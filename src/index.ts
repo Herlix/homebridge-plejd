@@ -1,7 +1,7 @@
-import { API } from 'homebridge';
+import { API } from "homebridge";
 
-import { PLATFORM_NAME, PLUGIN_NAME } from './settings.js';
-import { PlejdHbPlatform } from './PlejdHbPlatform.js';
+import { PLATFORM_NAME, PLUGIN_NAME } from "./constants.js";
+import { PlejdHbPlatform } from "./PlejdHbPlatform.js";
 
 /**
  * This method registers the platform with Homebridge

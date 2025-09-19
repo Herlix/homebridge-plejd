@@ -2,19 +2,18 @@ export default {
   transform: { "^.+\\.ts?$": "ts-jest" },
   preset: "ts-jest",
   testEnvironment: "node",
-  testPathIgnorePatterns: ["/node_modules/", ".next", "dist", "supabase"],
+  testPathIgnorePatterns: ["/node_modules/", "dist", "cache"],
   coverageDirectory: "./coverage",
   coveragePathIgnorePatterns: [
     "node_modules",
     "tests",
-    "src/generated",
     "dist",
+    "cache",
     "**/*/**.spec*",
   ],
   rootDir: ".",
+  extensionsToTreatAsEsm: [".ts"],
   moduleNameMapper: {
-    "^src/(.*)": "<rootDir>/src/$1",
-    "^dto/(.*)": "<rootDir>/dto/$1",
-    "^dto$": "<rootDir>/dto",
+    "^(\\.{1,2}/.*)\\.js$": "$1",
   },
 };

@@ -1,3 +1,11 @@
+#### 1.7.0 (2025-09-19)
+
+Reduced message timeout for BLE commands
+Update filter for finding lights
+Refactorings
+Added tests
+Added opt-in brightness transition when light is on
+
 #### 1.6.2(2024-12-24)
 
 Add blacklist for problematic devices
