@@ -6,4 +6,5 @@ export interface Device {
   uuid: string;
   room?: string;
   hidden: boolean;
+  plejdDeviceId: string;
 }

@@ -61,7 +61,6 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
         true,
       );
       const site = await pApi.getPlejdRemoteSite();
-      this.log.debug(JSON.stringify(site, null, 2));
       this.configureDevices(this.log, this.config, site);
     } else if (
       this.config.crypto_key &&
@@ -83,10 +82,9 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
     if (site) {
       config.crypto_key = site.plejdMesh.cryptoKey;
       site.devices.forEach((device) => {
-        const name = device.title;
-        const id = device.deviceId;
-
-        const plejdDevice = site.plejdDevices.find((x) => x.deviceId === id)!;
+        const plejdDevice = site.plejdDevices.find(
+          (x) => x.deviceId === device.deviceId,
+        )!;
         const model = plejdDevice.firmware.notes;
 
         if (isAddon(model) || isSwitch(model)) {
@@ -98,7 +96,7 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
 
         const room = site.rooms.find((x) => x.roomId === device.roomId);
 
-        let identifier = site.deviceAddress[id]!;
+        let identifier = site.deviceAddress[device.deviceId]!;
 
         // When DIM-02, make sure that the next device will have the new index
         if (
@@ -109,18 +107,19 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
         }
 
         const res: Device = {
-          name: name,
+          name: device.title,
           model: model,
           identifier: identifier,
           isDimmer: isDimmable(model),
           uuid: this.generateId(identifier.toString()),
           room: room?.title,
           hidden: false,
+          plejdDeviceId: device.deviceId,
         };
 
         const pre = devices.findIndex((x) => x.identifier === res.identifier);
         if (pre !== -1 && devices[pre].hidden) {
-          this.log.info(`${name} is set to hidden. Will ignore device.`);
+          this.log.info(`${res.name} is set to hidden. Will ignore device.`);
         } else {
           devices.push(res);
         }
