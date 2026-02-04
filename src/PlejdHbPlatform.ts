@@ -14,8 +14,10 @@ import {
   PLUGIN_NAME,
 } from "./constants.js";
 import { PlejdHbAccessory } from "./PlejdHbAccessory.js";
+import { PlejdHbSceneAccessory } from "./PlejdHbSceneAccessory.js";
 import { UserInputConfig } from "./model/userInputConfig.js";
 import { Device } from "./model/device.js";
+import { Scene } from "./model/scene.js";
 import { PlejdService } from "./plejdService.js";
 import PlejdRemoteApi from "./plejdApi.js";
 import { Site } from "./model/plejdSite.js";
@@ -31,6 +33,7 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
   public readonly accessories: PlatformAccessory[] = [];
 
   public readonly plejdHbAccessories: PlejdHbAccessory[] = [];
+  public readonly plejdHbSceneAccessories: PlejdHbSceneAccessory[] = [];
   private readonly transitionMs: number;
 
   constructor(
@@ -77,6 +80,7 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
 
   configureDevices = (log: Logger, config: PlatformConfig, site?: Site) => {
     const devices = (config.devices as Device[]) || [];
+    const scenes: Scene[] = [];
 
     if (site) {
       config.crypto_key = site.plejdMesh.cryptoKey;
@@ -117,6 +121,32 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
           devices.push(res);
         }
       });
+
+      // Extract scenes from cloud data
+      site.scenes.forEach((siteScene) => {
+        if (siteScene.hiddenFromSceneList) {
+          return;
+        }
+
+        const sceneIndex = site.sceneIndex[siteScene.sceneId];
+        if (sceneIndex === undefined) {
+          this.log.warn(
+            `Scene "${siteScene.title}" has no index mapping, skipping`,
+          );
+          return;
+        }
+
+        const scene: Scene = {
+          name: siteScene.title,
+          sceneIndex: sceneIndex,
+          sceneId: siteScene.sceneId,
+          uuid: this.generateId(`scene-${siteScene.sceneId}`),
+          hidden: false,
+        };
+
+        scenes.push(scene);
+        this.log.info(`Found scene: ${scene.name} (index: ${scene.sceneIndex})`);
+      });
     }
 
     for (let i = 0; i < devices.length; i++) {
@@ -148,6 +178,7 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
         (device) =>
           device.outputType === "LIGHT" || device.outputType === "RELAY",
       ),
+      scenes: scenes,
       cryptoKey: cryptoKey,
     };
 
@@ -156,6 +187,7 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
       "Plejd Devices connected to HomeKit:",
       this.userInputConfig.devices,
     );
+    log.debug("Plejd Scenes connected to HomeKit:", this.userInputConfig.scenes);
 
     this.plejdService = new PlejdService(
       this.userInputConfig,
@@ -165,6 +197,7 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
     this.plejdService.configureBLE();
 
     this.discoverDevices();
+    this.discoverScenes();
   };
 
   /**
@@ -176,9 +209,12 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
   };
 
   discoverDevices = () => {
-    const units = this.userInputConfig!.devices.map((x) => x.uuid);
+    const deviceUuids = this.userInputConfig!.devices.map((x) => x.uuid);
+    const sceneUuids = this.userInputConfig!.scenes.map((x) => x.uuid);
+    const allUuids = [...deviceUuids, ...sceneUuids];
+
     const notRegistered = this.accessories.filter(
-      (ac) => !units.includes(ac.UUID),
+      (ac) => !allUuids.includes(ac.UUID),
     );
     if (notRegistered.length > 0) {
       this.homebridgeApi.unregisterPlatformAccessories(
@@ -209,6 +245,46 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
       } else {
         this.addNewDevice(device);
       }
+    }
+  };
+
+  discoverScenes = () => {
+    for (const scene of this.userInputConfig!.scenes) {
+      if (scene.hidden) {
+        continue;
+      }
+
+      const existingAccessory = this.accessories.find(
+        (accessory) => accessory.UUID === scene.uuid,
+      );
+
+      if (existingAccessory) {
+        this.plejdHbSceneAccessories.push(
+          new PlejdHbSceneAccessory(this, existingAccessory, scene),
+        );
+      } else {
+        this.addNewScene(scene);
+      }
+    }
+  };
+
+  addNewScene = (scene: Scene) => {
+    const accessory = new this.homebridgeApi.platformAccessory(
+      scene.name,
+      scene.uuid,
+    );
+    accessory.context.scene = scene;
+
+    this.plejdHbSceneAccessories.push(
+      new PlejdHbSceneAccessory(this, accessory, scene),
+    );
+
+    this.homebridgeApi.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [
+      accessory,
+    ]);
+
+    if (!this.accessories.find((x) => x.UUID === scene.uuid)) {
+      this.accessories.push(accessory);
     }
   };
 

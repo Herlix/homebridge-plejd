@@ -9,6 +9,7 @@ describe("PlejdService updateState", () => {
     service = new PlejdService(
       {
         devices: [],
+        scenes: [],
         cryptoKey: Buffer.from("FooBar", "utf8"),
       },
       Logger.withPrefix("PlejdServiceTests"),

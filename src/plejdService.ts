@@ -148,6 +148,22 @@ export class PlejdService {
     }
   };
 
+  /**
+   * Trigger a Plejd scene
+   *
+   * @param sceneIndex - The scene index from sceneIndex mapping
+   */
+  triggerScene = (sceneIndex: number) => {
+    const sceneIndexHex = sceneIndex.toString(16).padStart(2, "0");
+    // Payload format: [address][version][command_type][command][scene_index]
+    // = 00 01 10 00 21 <sceneIndex>
+    const payload =
+      "00" + "0110" + PlejdCommand.Scene + sceneIndexHex;
+
+    this.log.debug(`BLE: Triggering scene ${sceneIndex}`);
+    this.sendQueue.unshift(Buffer.from(payload, "hex"));
+  };
+
   configureBLE = () => {
     this.startBlacklistCleanup();
     noble.on("stateChange", async (state) => {
