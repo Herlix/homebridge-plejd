@@ -120,13 +120,6 @@ export class PlejdService {
       return;
     }
 
-    if (
-      opt.targetBrightness &&
-      opt.targetBrightness === opt.currentBrightness
-    ) {
-      return;
-    }
-
     const trans = opt.transitionMs || DEFAULT_BRIGHTNESS_TRANSITION_MS;
     const steps = trans > 0 ? Math.round(trans / PLEJD_WRITE_TIMEOUT) : 1;
 

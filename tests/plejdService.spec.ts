@@ -48,7 +48,7 @@ describe("PlejdService updateState", () => {
   });
 
   describe("Brightness transition scenarios", () => {
-    it("should return if no brightness change is made", async () => {
+    it("should send brightness commands even when current equals target", async () => {
       const deviceId = 42;
       const brightness = 50; // 50% brightness
       const transitionMS = 500;
@@ -58,7 +58,9 @@ describe("PlejdService updateState", () => {
         transitionMs: transitionMS,
       });
       const queue = service.readQueue();
-      expect(queue.length).toBe(0);
+      // Commands are always sent to ensure device state stays in sync
+      const expectedSteps = Math.round(transitionMS / PLEJD_WRITE_TIMEOUT);
+      expect(queue.length).toBe(expectedSteps);
     });
 
     it("should queue multiple brightness commands for a transition", async () => {

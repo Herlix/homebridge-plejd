@@ -92,17 +92,9 @@ export class PlejdHbAccessory {
   };
 
   private setOn = async (value: CharacteristicValue) => {
-    const newState = value as boolean;
     this.platform.log.debug(
-      `Homekit: turning ${value === true ? "on" : "off"} ${this.device.name} (current state: isOn=${this.state.isOn}, brightness=${this.state.brightness})`,
+      `Homekit: turning ${value === true ? "on" : "off"} ${this.device.name}`,
     );
-
-    if (this.state.isOn === newState) {
-      this.platform.log.debug(
-        `${this.device.name} already ${newState ? "on" : "off"}, skipping`,
-      );
-      return;
-    }
 
     await this.platform.plejdService?.updateState(
       this.device.identifier,
