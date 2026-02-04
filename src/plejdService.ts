@@ -13,7 +13,6 @@ import {
   withRetry,
   plejdChallageResp as plejdCharResp,
   plejdEncodeDecode,
-  Result,
 } from "./utils.js";
 
 /**
@@ -48,6 +47,8 @@ export class PlejdService {
   private plejdTimeout: NodeJS.Timeout | null = null;
   private queueTimeout: NodeJS.Timeout | null = null;
   private blacklistCleanupInterval: NodeJS.Timeout | null = null;
+  private discoverHandler: ((peripheral: noble.Peripheral) => void) | null =
+    null;
   private isConnecting = false;
   private isAuthenticated = false;
   private deviceAddress?: string | null = null;
@@ -168,13 +169,13 @@ export class PlejdService {
    * @param peripheral in question
    * @returns
    */
-  private extractAddress(peripheral: noble.Peripheral): Result<string, string> {
+  private extractAddress(peripheral: noble.Peripheral): string | null {
     this.log.debug(
       `Peripheral advertisement: ${JSON.stringify(peripheral.advertisement)}`,
     );
 
     if (peripheral.address) {
-      return { value: peripheral.address.replace(/:/g, "").toUpperCase() };
+      return peripheral.address.replace(/:/g, "").toUpperCase();
     }
     const macRegex = /([A-Fa-f0-9]{12})$/;
     const match = peripheral.advertisement.localName.match(macRegex);
@@ -182,21 +183,29 @@ export class PlejdService {
     if (!match || !match[1]) {
       // In the rare case a user has one device and it does not expose its MAC address
       if (this.config.devices.length === 1) {
-        return { value: this.config.devices[0].plejdDeviceId };
+        return this.config.devices[0].plejdDeviceId;
       } else {
-        return {
-          error: `Unable to extract MAC address peripgeral: ${peripheral.advertisement.localName}`,
-        };
+        return null;
       }
     }
-    return { value: match[1].toUpperCase() };
+    return match[1].toUpperCase();
+  }
+
+  /**
+   * Gets a stable identifier for blacklisting. Uses MAC if available,
+   * falls back to peripheral.uuid on macOS.
+   */
+  private getPeripheralIdentifier(peripheral: noble.Peripheral): string {
+    const macResult = this.extractAddress(peripheral);
+    if (macResult) {
+      return macResult;
+    }
+    return `uuid:${peripheral.uuid}`;
   }
 
   /**
    *
    * Checks if the peripheral is suitable, will blacklist if not suitable.
-   *
-   * Returns error if a device does not follow expected behaviour.
    *
    * A device can be blacklisted in a previous scan, this would be a unsuitable device.
    *
@@ -205,21 +214,29 @@ export class PlejdService {
    */
   private isSuitableDeviceAddress = async (
     peripheral: noble.Peripheral,
-  ): Promise<Result<string, string>> => {
-    const deviceAddressResult = this.extractAddress(peripheral);
-    let deviceAddress = "";
-    if (!deviceAddressResult.value) {
-      this.log.warn(
-        `Unable to extract MAC address peripheral: ${JSON.stringify(peripheral.advertisement)}`,
-      );
-      return { error: deviceAddressResult.error };
+  ): Promise<string | null> => {
+    const peripheralId = this.getPeripheralIdentifier(peripheral);
+
+    // Check blacklist first using fallback-safe identifier
+    if (this.isDeviceBlacklisted(peripheralId)) {
+      this.log.debug(`Skipping blacklisted peripheral: ${peripheralId}`);
+      return null;
     }
-    deviceAddress = deviceAddressResult.value;
+
+    const deviceAddressResult = this.extractAddress(peripheral);
+    if (!deviceAddressResult) {
+      this.log.warn(
+        `Unable to extract MAC address from peripheral: ${JSON.stringify(peripheral.advertisement)} (uuid: ${peripheral.uuid})`,
+      );
+      this.blacklistDevice(peripheralId, "mac_extraction_failed");
+      return null;
+    }
+    const deviceAddress = deviceAddressResult;
 
     if (!this.config.devices.find((x) => x.plejdDeviceId === deviceAddress)) {
       this.blacklistDevice(deviceAddress, "not_found");
       this.log.warn(`Device ${deviceAddress} not found in known devices`);
-      return {};
+      return null;
     }
 
     if (peripheral.rssi < -90) {
@@ -227,24 +244,19 @@ export class PlejdService {
         `Skipping device with weak signal: ${deviceAddress} (${peripheral.rssi} dB)`,
       );
       this.blacklistDevice(deviceAddress, "weak_signal");
-      return {};
-    }
-
-    if (this.isDeviceBlacklisted(deviceAddress)) {
-      this.log.info(`Skipping blacklisted device: ${deviceAddress}`);
-      return {};
+      return null;
     }
 
     if (this.isConnecting) {
       this.log.debug("Connection already in progress, skipping...");
-      return {};
+      return null;
     }
 
     this.log.info(
       `Discovered | ${peripheral.advertisement.localName} | addr: ${deviceAddress} | Signal strength: ${this.mapRssiToQuality(peripheral.rssi)} (${peripheral.rssi} dB)`,
     );
 
-    return { value: deviceAddress };
+    return deviceAddress;
   };
 
   private connectToPeripheral = async (
@@ -458,10 +470,7 @@ export class PlejdService {
         this.log.warn("Ping failed: ", error);
       }
 
-      if (
-        this.deviceAddress &&
-        this.deviceState.consecutivePingFailures >= 3
-      ) {
+      if (this.deviceAddress && this.deviceState.consecutivePingFailures >= 3) {
         this.log.warn("Ping failed 3 times, reconnecting to mesh");
         this.blacklistDevice(this.deviceAddress, "Ping failed 3 times");
         this.stopPlejdPing();
@@ -652,7 +661,8 @@ export class PlejdService {
           () => noble.startScanningAsync([PlejdCharacteristics.Service], false),
           10_000,
         );
-        noble.once("discover", async (peripheral) => {
+
+        this.discoverHandler = async (peripheral: noble.Peripheral) => {
           const timeOut = () => {
             if (this.discoverTimeout) {
               clearTimeout(this.discoverTimeout);
@@ -661,22 +671,21 @@ export class PlejdService {
             this.discoverTimeout = setTimeout(async () => {
               if (!this.isAuthenticated) {
                 this.log.warn("No device found during scan, restarting scan");
+                this.removeDiscoverHandler();
                 await noble.stopScanningAsync();
                 await this.tryStartScanning();
               }
             }, 30000);
           };
           const r = await this.isSuitableDeviceAddress(peripheral);
-          if (r.error) {
-            this.log.warn(r.error);
-            await noble.stopScanningAsync();
-            await this.tryStartScanning();
-            timeOut();
-          } else if (r.value) {
-            await this.connectToPeripheral(peripheral, r.value);
+          if (r) {
+            this.removeDiscoverHandler();
+            await this.connectToPeripheral(peripheral, r);
             timeOut();
           }
-        });
+          // If no value, continue listening for more peripherals
+        };
+        noble.on("discover", this.discoverHandler);
       }
     } catch (e) {
       this.log.error("Failed to start scanning for Plejd devices", e);
@@ -752,9 +761,17 @@ export class PlejdService {
     ); // Clean every 5 minutes
   }
 
+  private removeDiscoverHandler() {
+    if (this.discoverHandler) {
+      noble.removeListener("discover", this.discoverHandler);
+      this.discoverHandler = null;
+    }
+  }
+
   private cleanup() {
     this.stopPlejdPing();
     this.stopQueueProcessor();
+    this.removeDiscoverHandler();
     if (this.blacklistCleanupInterval) {
       clearInterval(this.blacklistCleanupInterval);
       this.blacklistCleanupInterval = null;

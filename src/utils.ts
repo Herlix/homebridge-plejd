@@ -1,10 +1,5 @@
 import { createCipheriv, createHash } from "crypto";
 
-/**
- * A simple result wrapper. If no error is provided it's considered a success.
- */
-export type Result<T, E> = { value?: T; error?: E };
-
 export const delay = (ms: number) =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
