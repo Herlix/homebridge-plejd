@@ -13,7 +13,6 @@ import {
   PLATFORM_NAME,
   PLUGIN_NAME,
 } from "./constants.js";
-import { isDimmable, isAddon, isSwitch } from "./utils.js";
 import { PlejdHbAccessory } from "./PlejdHbAccessory.js";
 import { UserInputConfig } from "./model/userInputConfig.js";
 import { Device } from "./model/device.js";
@@ -81,18 +80,12 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
 
     if (site) {
       config.crypto_key = site.plejdMesh.cryptoKey;
+
       site.devices.forEach((device) => {
         const plejdDevice = site.plejdDevices.find(
           (x) => x.deviceId === device.deviceId,
         )!;
         const model = plejdDevice.firmware.notes;
-
-        if (isAddon(model) || isSwitch(model)) {
-          this.log.info(
-            `Ignoring ${model} as it is not supported for now, help with this is needed`,
-          );
-          return;
-        }
 
         const room = site.rooms.find((x) => x.roomId === device.roomId);
 
@@ -110,7 +103,7 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
           name: device.title,
           model: model,
           identifier: identifier,
-          isDimmer: isDimmable(model),
+          outputType: device.outputType,
           uuid: this.generateId(identifier.toString()),
           room: room?.title,
           hidden: false,
@@ -127,10 +120,12 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
     }
 
     for (let i = 0; i < devices.length; i++) {
-      if (devices[i].model) {
-        devices[i].isDimmer = isDimmable(devices[i].model);
-      } else {
-        log.error("Missing device model |", devices[i].name);
+      if (!devices[i].outputType) {
+        log.warn(
+          `Device "${devices[i].name}" is missing the "type" field. ` +
+            `Defaulting to "LIGHT". Please update your configuration.`,
+        );
+        devices[i].outputType = "LIGHT";
       }
 
       if (devices[i].identifier) {
@@ -148,7 +143,11 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
 
     const cryptoKey = Buffer.from(config.crypto_key.replace(/-/g, ""), "hex");
     this.userInputConfig = {
-      devices: devices,
+      // There could be other output types eg: WMS-01
+      devices: devices.filter(
+        (device) =>
+          device.outputType === "LIGHT" || device.outputType === "RELAY",
+      ),
       cryptoKey: cryptoKey,
     };
 
@@ -252,7 +251,7 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
       (dev) => dev.device.identifier === identifier,
     );
     if (existingAccessory && device && plejdHbAccessory) {
-      if (device.isDimmer) {
+      if (device.outputType === "LIGHT") {
         const ser = existingAccessory.getService(this.Service.Lightbulb);
 
         if (!ser) {

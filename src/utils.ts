@@ -1,5 +1,4 @@
 import { createCipheriv, createHash } from "crypto";
-import { PLEJD_LIGHTS, PLEJD_ADDONS, PLEJD_SWITCHES } from "./constants.js";
 
 /**
  * A simple result wrapper. If no error is provided it's considered a success.
@@ -59,26 +58,6 @@ export const plejdEncodeDecode = (
 
   return Buffer.from(output, "ascii");
 };
-
-export const isDimmable = (type: string) => {
-  const normalizedType = type.toLowerCase();
-  // Check if the model starts with any of the basic dimmer types
-  return PLEJD_LIGHTS.some(
-    (light) =>
-      normalizedType.includes(light.toLowerCase()) ||
-      normalizedType.includes("dim"),
-  );
-};
-
-export const isAddon = (type: string) =>
-  !!PLEJD_ADDONS.find((addon) =>
-    type.toLowerCase().includes(addon.toLowerCase()),
-  );
-
-export const isSwitch = (type: string) =>
-  !!PLEJD_SWITCHES.find((switchType) =>
-    type.toLowerCase().includes(switchType.toLowerCase()),
-  );
 
 const xor = (first: Buffer, second: Buffer): Buffer => {
   const result = Buffer.alloc(first.length);

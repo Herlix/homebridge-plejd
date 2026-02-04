@@ -44,7 +44,7 @@ export class PlejdHbAccessory {
         this.device.identifier.toString(),
       );
 
-    if (this.device.isDimmer) {
+    if (this.device.outputType === "LIGHT") {
       this.service =
         this.accessory.getService(this.platform.Service.Lightbulb) ||
         this.accessory.addService(this.platform.Service.Lightbulb);

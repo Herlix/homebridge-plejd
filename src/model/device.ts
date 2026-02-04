@@ -2,7 +2,7 @@ export interface Device {
   name: string;
   model: string;
   identifier: number;
-  isDimmer: boolean;
+  outputType: "LIGHT" | "RELAY";
   uuid: string;
   room?: string;
   hidden: boolean;

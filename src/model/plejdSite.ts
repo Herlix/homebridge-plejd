@@ -51,11 +51,10 @@ export interface AstroEvent {
   className: string;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-empty-interface
 export interface PurpleACL {}
 
 export enum PurpleType {
-  Object = 'Object',
+  Object = "Object",
 }
 
 export interface TargetDevice {
@@ -81,11 +80,12 @@ export interface Device {
 }
 
 export enum DeviceClassName {
-  Device = 'Device',
+  Device = "Device",
 }
 
 export enum OutputType {
-  Light = 'LIGHT',
+  Light = "LIGHT",
+  Relay = "RELAY",
 }
 
 export interface Gateway {
@@ -129,15 +129,15 @@ export interface Data {
 }
 
 export enum DataType {
-  File = 'File',
+  File = "File",
 }
 
 export enum ObjectID {
-  BcKqEZhBlZ = 'BcKqEZhBlZ',
-  D4Dw87Hq21 = 'D4DW87HQ21',
-  DtkZ3Ev3DI = 'dtkZ3Ev3DI',
-  LjUH1MRUUa = 'LjUH1mRUUa',
-  OTNDhFmsnJ = 'oTNDhFmsnJ',
+  BcKqEZhBlZ = "BcKqEZhBlZ",
+  D4Dw87Hq21 = "D4DW87HQ21",
+  DtkZ3Ev3DI = "dtkZ3Ev3DI",
+  LjUH1MRUUa = "LjUH1mRUUa",
+  OTNDhFmsnJ = "oTNDhFmsnJ",
 }
 
 export interface InputSetting {
@@ -157,11 +157,11 @@ export interface InputSetting {
 }
 
 export enum ButtonType {
-  PushButton = 'PushButton',
+  PushButton = "PushButton",
 }
 
 export enum InputSettingClassName {
-  PlejdDeviceInputSetting = 'PlejdDeviceInputSetting',
+  PlejdDeviceInputSetting = "PlejdDeviceInputSetting",
 }
 
 export interface OutputAddress {
@@ -174,7 +174,7 @@ export interface OutputAddress {
 }
 
 export interface OutputAddressCCDE6AD41DBC {
-  '0': number;
+  "0": number;
 }
 
 export interface OutputGroups {
@@ -187,7 +187,7 @@ export interface OutputGroups {
 }
 
 export interface OutputGroupsCCDE6AD41DBC {
-  '0': number[];
+  "0": number[];
 }
 
 export interface OutputSetting {
@@ -215,15 +215,15 @@ export interface OutputSetting {
 }
 
 export enum BootState {
-  UseLast = 'UseLast',
+  UseLast = "UseLast",
 }
 
 export enum OutputSettingClassName {
-  PlejdDeviceOutputSetting = 'PlejdDeviceOutputSetting',
+  PlejdDeviceOutputSetting = "PlejdDeviceOutputSetting",
 }
 
 export enum DimCurve {
-  LinearLogarithmicSlidingProportion = 'LinearLogarithmicSlidingProportion',
+  LinearLogarithmicSlidingProportion = "LinearLogarithmicSlidingProportion",
 }
 
 export interface PredefinedLoad {
@@ -246,7 +246,7 @@ export interface PredefinedLoad {
 }
 
 export interface PredefinedLoadACL {
-  '*': Empty;
+  "*": Empty;
 }
 
 export interface Empty {
@@ -259,19 +259,19 @@ export interface AllowedDimCurves {
 }
 
 export enum AllowedDimCurvesType {
-  Relation = 'Relation',
+  Relation = "Relation",
 }
 
 export enum AllowedDimCurvesClassName {
-  DimCurve = 'DimCurve',
-  PlejdMesh = 'PlejdMesh',
-  Site = 'Site',
-  User = '_User',
-  UserProfile = 'UserProfile',
+  DimCurve = "DimCurve",
+  PlejdMesh = "PlejdMesh",
+  Site = "Site",
+  User = "_User",
+  UserProfile = "UserProfile",
 }
 
 export enum PredefinedLoadClassName {
-  PredefinedLoad = 'PredefinedLoad',
+  PredefinedLoad = "PredefinedLoad",
 }
 
 export interface PlejdMeshClass {
@@ -281,45 +281,45 @@ export interface PlejdMeshClass {
 }
 
 export enum SiteType {
-  Pointer = 'Pointer',
+  Pointer = "Pointer",
 }
 
 export enum DescriptionKey {
-  TrailingDescription = 'TrailingDescription',
-  TrailingDim02Description = 'TrailingDim02Description',
+  TrailingDescription = "TrailingDescription",
+  TrailingDim02Description = "TrailingDim02Description",
 }
 
 export enum DescriptionEn {
-  The230VIncandescentHalogenElectronicTransformatorMax100W = '230V Incandescent / Halogen, Electronic transformator - Max 100W',
-  The230VIncandescentHalogenElectronicTransformatorMax300W = '230V Incandescent / Halogen, Electronic transformator - Max 300W',
+  The230VIncandescentHalogenElectronicTransformatorMax100W = "230V Incandescent / Halogen, Electronic transformator - Max 100W",
+  The230VIncandescentHalogenElectronicTransformatorMax300W = "230V Incandescent / Halogen, Electronic transformator - Max 300W",
 }
 
 export enum DescriptionSv {
-  The230VDimbarLEDLjuskällaMax100VA = '230V dimbar LED ljuskälla - Max 100VA',
-  The230VDimbarLEDLjuskällaMax200VA = '230V dimbar LED ljuskälla - Max 200VA',
+  The230VDimbarLEDLjuskällaMax100VA = "230V dimbar LED ljuskälla - Max 100VA",
+  The230VDimbarLEDLjuskällaMax200VA = "230V dimbar LED ljuskälla - Max 200VA",
 }
 
 export enum LoadType {
-  TrailingEdge = 'Trailing Edge',
-  TrailingEdgeDim02 = 'Trailing Edge Dim02',
+  TrailingEdge = "Trailing Edge",
+  TrailingEdgeDim02 = "Trailing Edge Dim02",
 }
 
 export enum PredefinedLoadObjectID {
-  The6NawurOZ7M = '6nawurOZ7m',
-  The7ES04HWWfG = '7ES04HWWfG',
+  The6NawurOZ7M = "6nawurOZ7m",
+  The7ES04HWWfG = "7ES04HWWfG",
 }
 
 export enum TitleKey {
-  TrailingDim02Title = 'TrailingDim02Title',
-  TrailingTitle = 'TrailingTitle',
+  TrailingDim02Title = "TrailingDim02Title",
+  TrailingTitle = "TrailingTitle",
 }
 
 export enum TitleEn {
-  LEDTrailingEdgeCommon = 'LED Trailing Edge (Common)',
+  LEDTrailingEdgeCommon = "LED Trailing Edge (Common)",
 }
 
 export enum TitleSv {
-  LEDBakkantVanligast = 'LED Bakkant (Vanligast)',
+  LEDBakkantVanligast = "LED Bakkant (Vanligast)",
 }
 
 export interface PlejdDevice {

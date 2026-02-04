@@ -1,89 +1,107 @@
 {
-  "pluginAlias": "Plejd",
-  "pluginType": "platform",
-  "headerDisplay": "Plejd Setup",
-  "footerDisplay": "Either use your login or add devices and crypto key manually. Crypto key and device info is printed as debug logs at startup",
-  "singular": true,
-  "schema": {
-    "username": {
-      "title": "Your Plejd email",
-      "type": "string",
-      "required": false,
-      "placeholder": "...",
-      "description": "Your Plejd email"
-    },
-    "password": {
-      "title": "Your Plejd password",
-      "type": "string",
-      "required": false,
-      "placeholder": "828291.. or 82-82-91...",
-      "description": "With or without '-' "
-    },
-    "site": {
-      "title": "Site",
-      "type": "string",
-      "required": false,
-      "placeholder": "Home",
-      "description": "Name of your home that you want to control"
-    },
-    "crypto_key": {
-      "title": "Crypto key",
-      "type": "string",
-      "required": false,
-      "placeholder": "828291.. or 82-82-91...",
-      "description": "With or without '-' "
-    },
-    "transition_ms": {
-      "title": "Add transition when changing brightness levels (Note: Not for on/off to reduce flickering with button actions)",
-      "type": "number",
-      "required": false,
-      "placeholder": "1000",
-      "description": "Amount of milliseconds of transitioning brightness"
-    },
-    "devices": {
-      "type": "array",
-      "items": {
-        "title": "Device",
-        "type": "object",
-        "properties": {
-          "name": {
-            "title": "Name",
+    "pluginAlias": "Plejd",
+    "pluginType": "platform",
+    "headerDisplay": "Plejd Setup",
+    "footerDisplay": "Either use your login or add devices and crypto key manually. Crypto key and device info is printed as debug logs at startup",
+    "singular": true,
+    "schema": {
+        "username": {
+            "title": "Your Plejd email",
             "type": "string",
-            "placeholder": "Kitchen table",
-            "required": true
-          },
-          "model": {
-            "title": "Model",
+            "required": false,
+            "placeholder": "...",
+            "description": "Your Plejd email"
+        },
+        "password": {
+            "title": "Your Plejd password",
             "type": "string",
-            "enum": [
-              "DIM-01",
-              "DIM-02",
-              "LED-10",
-              "DIM-01-2P",
-              "REL-01",
-              "REL-02",
-              "REL-01-2P",
-              "DAL-01",
-              "SPR-01",
-              "CTR-01",
-              "WPH-01"
-            ],
-            "required": true
-          },
-          "identifier": {
-            "title": "Identifier",
-            "type": "integer",
-            "placeholder": "11",
-            "required": true
-          },
-          "hidden": {
-            "title": "Hidden",
-            "type": "boolean",
-            "default": false,
-            "required": false
-          }
+            "required": false,
+            "placeholder": "828291.. or 82-82-91...",
+            "description": "With or without '-' "
+        },
+        "site": {
+            "title": "Site",
+            "type": "string",
+            "required": false,
+            "placeholder": "Home",
+            "description": "Name of your home that you want to control"
+        },
+        "crypto_key": {
+            "title": "Crypto key",
+            "type": "string",
+            "required": false,
+            "placeholder": "828291.. or 82-82-91...",
+            "description": "With or without '-' "
+        },
+        "transition_ms": {
+            "title": "Add transition when changing brightness levels (Note: Not for on/off to reduce flickering with button actions)",
+            "type": "number",
+            "required": false,
+            "placeholder": "1000",
+            "description": "Amount of milliseconds of transitioning brightness"
+        },
+        "devices": {
+            "type": "array",
+            "items": {
+                "title": "Device",
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "title": "Name",
+                        "type": "string",
+                        "placeholder": "Kitchen table",
+                        "required": true
+                    },
+                    "type": {
+                        "title": "Type",
+                        "type": "string",
+                        "oneOf": [
+                            { "title": "Light (Dimmable)", "const": "Light" },
+                            { "title": "Relay (On/Off only)", "const": "Relay" }
+                        ],
+                        "required": true,
+                        "description": "Light for dimmable devices, Relay for on/off switches"
+                    },
+                    "model": {
+                        "title": "Model",
+                        "type": "string",
+                        "enum": [
+                            "DIM-01",
+                            "DIM-02",
+                            "LED-10",
+                            "LED-75",
+                            "JAL-01",
+                            "DIM-01-2P",
+                            "REL-01",
+                            "REL-02",
+                            "REL-01-2P",
+                            "DAL-01",
+                            "SPR-01",
+                            "SPD-01",
+                            "CTR-01",
+                            "DWN-01",
+                            "DWN-02",
+                            "CCL-01",
+                            "OUT-01",
+                            "OUT-02",
+                            "LST-01"
+                        ],
+                        "required": true
+                    },
+                    "identifier": {
+                        "title": "Identifier",
+                        "type": "integer",
+                        "placeholder": "11",
+                        "required": true
+                    },
+                    "hidden": {
+                        "title": "Hidden",
+                        "type": "boolean",
+                        "default": false,
+                        "required": false
+                    }
+                }
+            }
         }
-      }
     }
-  }
 }
