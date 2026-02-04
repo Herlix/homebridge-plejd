@@ -8,6 +8,32 @@ export type Result<T, E> = { value?: T; error?: E };
 export const delay = (ms: number) =>
   new Promise((resolve) => setTimeout(resolve, ms));
 
+/**
+ * Retry an operation with configurable retries and delay
+ * @param operation - The async operation to retry
+ * @param options - Configuration for retries
+ */
+export const withRetry = async <T>(
+  operation: () => Promise<T>,
+  options: { maxRetries?: number; delayMs?: number } = {},
+): Promise<T> => {
+  const { maxRetries = 3, delayMs = 100 } = options;
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      if (attempt < maxRetries) {
+        await delay(delayMs);
+      }
+    }
+  }
+
+  throw lastError;
+};
+
 /*
  * Set a timeout for a function
  * @param operation - The function to run

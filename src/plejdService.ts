@@ -10,6 +10,7 @@ import {
 import {
   delay,
   race,
+  withRetry,
   plejdChallageResp as plejdCharResp,
   plejdEncodeDecode,
   Result,
@@ -257,75 +258,71 @@ export class PlejdService {
     peripheral: noble.Peripheral,
     deviceAddress: string,
   ) => {
+    if (this.isConnecting) {
+      this.log.debug("Connection already in progress, skipping...");
+      return {};
+    }
+
+    this.isConnecting = true;
     let retryCount = 0;
     const maxRetries = 3;
 
-    const connectWithRetry = async () => {
-      try {
-        if (retryCount > 0) {
-          await delay(2000);
-        }
+    try {
+      while (retryCount <= maxRetries) {
+        try {
+          if (retryCount > 0) {
+            await delay(2000);
+            this.log.info(
+              `Attempting to reconnect (attempt ${retryCount}/${maxRetries})`,
+            );
+          }
 
-        this.isConnecting = true;
+          await peripheral.connectAsync();
+          this.log.info(
+            `Connected to mesh | ${peripheral.advertisement.localName} (addr: ${deviceAddress})`,
+          );
+          this.deviceAddress = deviceAddress;
 
-        await peripheral.connectAsync();
-        this.log.info(
-          `Connected to mesh | ${peripheral.advertisement.localName} (addr: ${deviceAddress})`,
-        );
-        this.deviceAddress = deviceAddress;
-
-        peripheral.once("disconnect", async () => {
-          this.log.info("Disconnected from mesh");
-          this.cleanup();
-          if (retryCount < maxRetries) {
-            retryCount++;
-            this.log.info(`Attempting to reconnect (attempt ${retryCount})`);
-            await connectWithRetry();
-          } else {
-            this.log.error("Max reconnection attempts reached. Starting scan.");
+          peripheral.once("disconnect", async () => {
+            this.log.info("Disconnected from mesh");
+            this.cleanup();
             await delay(5000);
             await this.tryStartScanning();
+          });
+
+          let characteristics: noble.Characteristic[];
+          try {
+            characteristics = await this.discoverCaracteristics(peripheral);
+          } catch (e) {
+            this.log.error(
+              "Failed to discover characteristics, disconnecting. Error:",
+              e,
+            );
+            await this.tryDisconnect(peripheral);
+            throw e;
           }
-        });
 
-        // Reset retry count on successful connection
-        retryCount = 0;
-
-        let characteristics: noble.Characteristic[];
-        try {
-          characteristics = await this.discoverCaracteristics(peripheral);
-        } catch (e) {
+          await this.setupDevice(peripheral, characteristics);
+          return {}; // Success - exit the method
+        } catch (error) {
           this.log.error(
-            "Failed to discover characteristics, disconnecting. Error:",
-            e,
+            `Connecting failed | ${peripheral.advertisement.localName} | addr: ${deviceAddress}) - err: ${error}`,
           );
           await this.tryDisconnect(peripheral);
-          throw e;
-        }
-
-        await this.setupDevice(peripheral, characteristics);
-      } catch (error) {
-        this.log.error(
-          `Connecting failed | ${peripheral.advertisement.localName} | addr: ${this.deviceAddress}) - err: ${error}`,
-        );
-        await this.tryDisconnect(peripheral);
-        if (retryCount < maxRetries) {
           retryCount++;
-          this.log.info(`Attempting to reconnect (attempt ${retryCount})`);
-          await connectWithRetry();
-        } else {
-          this.log.error(
-            "Max reconnection attempts reached. Resetting noble and starting scan.",
-          );
-          noble.reset();
-          await this.tryStartScanning();
         }
-      } finally {
-        this.isConnecting = false;
       }
-    };
 
-    await connectWithRetry();
+      // All retries exhausted
+      this.log.error(
+        "Max reconnection attempts reached. Resetting noble and starting scan.",
+      );
+      noble.reset();
+      await this.tryStartScanning();
+    } finally {
+      this.isConnecting = false;
+    }
+
     return {};
   };
 
@@ -400,20 +397,15 @@ export class PlejdService {
     await this.setupCommunication(peripheral, pingChar, lastDataChar, dataChar);
   };
 
-  private handleQueuedMessages = (
+  private startQueueProcessor = (
     dataChar: noble.Characteristic,
     addressBuffer: Buffer,
   ) => {
-    if (this.queueTimeout) {
-      clearTimeout(this.queueTimeout);
-    }
+    this.stopQueueProcessor();
 
-    this.queueTimeout = setTimeout(async () => {
+    const processQueue = async () => {
       const payload = this.sendQueue.pop();
-      if (!payload) {
-        this.handleQueuedMessages(dataChar, addressBuffer);
-        return;
-      }
+      if (!payload) return;
 
       const data = plejdEncodeDecode(
         this.config.cryptoKey,
@@ -424,72 +416,75 @@ export class PlejdService {
         `BLE command sent to ${addressBuffer?.toString("hex") ?? "Unknown"} | ${data.length} bytes | ${data.toString("hex")}`,
       );
 
-      let retryCount = 0;
-      const maxRetries = 3;
-
-      const tryWrite = async (): Promise<void> => {
-        try {
-          await race(() => dataChar.writeAsync(data, false));
-        } catch (error) {
-          if (retryCount < maxRetries) {
-            retryCount++;
-            this.log.info(`Retrying write (${retryCount}/${maxRetries})`);
-            await delay(PLEJD_WRITE_TIMEOUT);
-            return tryWrite();
-          }
-          throw error;
-        }
-      };
-
       try {
-        await tryWrite();
-        this.handleQueuedMessages(dataChar, addressBuffer);
+        await withRetry(() => race(() => dataChar.writeAsync(data, false)), {
+          maxRetries: 3,
+          delayMs: PLEJD_WRITE_TIMEOUT,
+        });
       } catch (error) {
-        this.sendQueue.unshift(data);
+        this.sendQueue.unshift(payload);
         this.log.error("Failed to send data to device, will retry: ", error);
       }
-    }, PLEJD_WRITE_TIMEOUT);
+    };
+
+    this.queueTimeout = setInterval(processQueue, PLEJD_WRITE_TIMEOUT);
+  };
+
+  private stopQueueProcessor = () => {
+    if (this.queueTimeout) {
+      clearInterval(this.queueTimeout);
+      this.queueTimeout = null;
+    }
   };
 
   private startPlejdPing = (
     peripheral: noble.Peripheral,
     pingChar: noble.Characteristic,
   ) => {
-    if (this.plejdTimeout) {
-      clearTimeout(this.plejdTimeout);
-    }
+    this.stopPlejdPing();
 
-    this.plejdTimeout = setTimeout(async () => {
-      if (pingChar) {
-        try {
-          const ping = randomBytes(1);
-          await race(() => pingChar.writeAsync(ping, false));
-          const pong = await race(() => pingChar.readAsync());
-          if (((ping[0] + 1) & 0xff) !== pong[0]) {
-            this.log.error(
-              "Ping pong communication failed, missing pong response",
-            );
-          }
+    const performPing = async () => {
+      if (!pingChar) return;
+
+      try {
+        const ping = randomBytes(1);
+        await race(() => pingChar.writeAsync(ping, false));
+        const pong = await race(() => pingChar.readAsync());
+
+        if (((ping[0] + 1) & 0xff) !== pong[0]) {
+          this.log.error(
+            "Ping pong communication failed, missing pong response",
+          );
+          this.deviceState.consecutivePingFailures++;
+        } else {
           this.deviceState.lastPingSuccess = Date.now();
           this.deviceState.consecutivePingFailures = 0;
-          this.startPlejdPing(peripheral, pingChar);
-        } catch (error) {
-          this.deviceState.consecutivePingFailures++;
-          if (
-            this.deviceAddress &&
-            this.deviceState.consecutivePingFailures >= 3
-          ) {
-            this.blacklistDevice(this.deviceAddress, `Ping failed: ${error}`);
-            await this.tryDisconnect(peripheral);
-            await this.tryStartScanning();
-          }
-          this.log.warn(
-            "Ping failed, device disconnected, will retry to connect to mesh: ",
-            error,
-          );
         }
+      } catch (error) {
+        this.deviceState.consecutivePingFailures++;
+        this.log.warn("Ping failed: ", error);
       }
-    }, PLEJD_PING_TIMEOUT);
+
+      if (
+        this.deviceAddress &&
+        this.deviceState.consecutivePingFailures >= 3
+      ) {
+        this.log.warn("Ping failed 3 times, reconnecting to mesh");
+        this.blacklistDevice(this.deviceAddress, "Ping failed 3 times");
+        this.stopPlejdPing();
+        await this.tryDisconnect(peripheral);
+        await this.tryStartScanning();
+      }
+    };
+
+    this.plejdTimeout = setInterval(performPing, PLEJD_PING_TIMEOUT);
+  };
+
+  private stopPlejdPing = () => {
+    if (this.plejdTimeout) {
+      clearInterval(this.plejdTimeout);
+      this.plejdTimeout = null;
+    }
   };
 
   private handleNotification = async (
@@ -497,15 +492,34 @@ export class PlejdService {
     isNotification: boolean,
     addressBuffer: Buffer,
   ) => {
+    const MIN_PAYLOAD_LENGTH = 5; // 1 byte id + 2 bytes padding + 2 bytes command
+    if (data.length < MIN_PAYLOAD_LENGTH) {
+      this.log.warn(
+        `Received malformed notification: expected at least ${MIN_PAYLOAD_LENGTH} bytes, got ${data.length}`,
+      );
+      return;
+    }
+
     const decodedData = plejdEncodeDecode(
       this.config.cryptoKey,
       addressBuffer,
       data,
     );
+
+    if (decodedData.length < MIN_PAYLOAD_LENGTH) {
+      this.log.warn(
+        `Decoded payload too short: expected at least ${MIN_PAYLOAD_LENGTH} bytes, got ${decodedData.length}`,
+      );
+      return;
+    }
+
     const id = parseInt(decodedData[0].toString(), 10);
     const command = decodedData.toString("hex", 3, 5);
 
-    const isOn = parseInt(decodedData.toString("hex", 5, 6), 10) === 1;
+    const isOn =
+      decodedData.length >= 6
+        ? parseInt(decodedData.toString("hex", 5, 6), 10) === 1
+        : false;
 
     const commandType =
       Object.values(PlejdCommand).find((x) => x.toString() === command) ??
@@ -533,6 +547,14 @@ export class PlejdService {
       }
       case PlejdCommand.Brightness:
       case PlejdCommand.StateBrightness: {
+        const BRIGHTNESS_PAYLOAD_LENGTH = 8;
+        if (decodedData.length < BRIGHTNESS_PAYLOAD_LENGTH) {
+          this.log.warn(
+            `Brightness payload too short: expected ${BRIGHTNESS_PAYLOAD_LENGTH} bytes, got ${decodedData.length}`,
+          );
+          this.onUpdate(id, isOn);
+          break;
+        }
         const dim = parseInt(decodedData.toString("hex", 7, 8), 16);
 
         // Convert to Homebridge 1-100
@@ -579,7 +601,7 @@ export class PlejdService {
       "hex",
     ).reverse();
 
-    this.handleQueuedMessages(dataChar, addressBuffer);
+    this.startQueueProcessor(dataChar, addressBuffer);
 
     try {
       this.log.info("Subscribing to incomming messages");
@@ -611,9 +633,8 @@ export class PlejdService {
       await delay(100);
       const data = await race(() => authChar.readAsync());
       await delay(100);
-      await authChar.writeAsync(
-        plejdCharResp(this.config.cryptoKey, data),
-        false,
+      await race(() =>
+        authChar.writeAsync(plejdCharResp(this.config.cryptoKey, data), false),
       );
       await delay(100);
       this.log.info("Authentication successful");
@@ -654,7 +675,7 @@ export class PlejdService {
           };
           const r = await this.isSuitableDeviceAddress(peripheral);
           if (r.error) {
-            this.log.warn(`${r.error ?? "Device unsuitable, will retry"}`);
+            this.log.warn(r.error);
             await noble.stopScanningAsync();
             await this.tryStartScanning();
             timeOut();
@@ -739,14 +760,8 @@ export class PlejdService {
   }
 
   private cleanup() {
-    if (this.plejdTimeout) {
-      clearTimeout(this.plejdTimeout);
-      this.plejdTimeout = null;
-    }
-    if (this.queueTimeout) {
-      clearTimeout(this.queueTimeout);
-      this.queueTimeout = null;
-    }
+    this.stopPlejdPing();
+    this.stopQueueProcessor();
     if (this.blacklistCleanupInterval) {
       clearInterval(this.blacklistCleanupInterval);
       this.blacklistCleanupInterval = null;

@@ -23,17 +23,17 @@ Raspberry pi is running Debian Bullseye (Raspberry Pi OS) with docker and docker
 
 ```yml
 homebridge:
-  image: oznu/homebridge:latest
-  restart: unless-stopped
-  network_mode: host
-  privileged: true
-  volumes:
-    - /home/pi/.homebridge:/homebridge
-  logging:
-    driver: json-file
-    options:
-      max-size: "10mb"
-      max-file: "1"
+    image: oznu/homebridge:latest
+    restart: unless-stopped
+    network_mode: host
+    privileged: true
+    volumes:
+        - /home/pi/.homebridge:/homebridge
+    logging:
+        driver: json-file
+        options:
+            max-size: "10mb"
+            max-file: "1"
 ```
 
 ### If not docker: Dependencies needed for Raspberry PI
@@ -69,6 +69,8 @@ Feel free to open a ticket if you can't get it working.
 The underlying protocol is relying on the BLE address to be exposed. This is not available on mac, meaning this app won't work on mac for now. There might be workarounds for this.
 
 I do not own all hardware from Plejd, this means I have not been able to make sure that it all works. However, feel free to add a PR. I'd like to add switches and sensors, this is not yet available as I do not own any of these.
+
+I would like to add support for items like WMS-01 and TRM-01 in the future.
 
 ## Thanks
 

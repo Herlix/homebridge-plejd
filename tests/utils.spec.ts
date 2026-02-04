@@ -1,6 +1,7 @@
 import {
   delay,
   race,
+  withRetry,
   plejdChallageResp as plejdChalResp,
   plejdEncodeDecode,
 } from "../src/utils";
@@ -222,5 +223,94 @@ describe("race", () => {
 
     expect(numberResult).toBe(42);
     expect(objectResult).toEqual({ key: "value" });
+  });
+});
+
+describe("withRetry", () => {
+  it("should succeed on first attempt", async () => {
+    let attempts = 0;
+    const operation = async () => {
+      attempts++;
+      return "success";
+    };
+
+    const result = await withRetry(operation);
+
+    expect(result).toBe("success");
+    expect(attempts).toBe(1);
+  });
+
+  it("should retry and succeed after failures", async () => {
+    let attempts = 0;
+    const operation = async () => {
+      attempts++;
+      if (attempts < 3) {
+        throw new Error("fail");
+      }
+      return "success";
+    };
+
+    const result = await withRetry(operation, { maxRetries: 3, delayMs: 10 });
+
+    expect(result).toBe("success");
+    expect(attempts).toBe(3);
+  });
+
+  it("should throw after max retries exceeded", async () => {
+    let attempts = 0;
+    const operation = async () => {
+      attempts++;
+      throw new Error("always fails");
+    };
+
+    await expect(
+      withRetry(operation, { maxRetries: 2, delayMs: 10 }),
+    ).rejects.toThrow("always fails");
+    expect(attempts).toBe(3); // Initial + 2 retries
+  });
+
+  it("should use default values when options not provided", async () => {
+    let attempts = 0;
+    const operation = async () => {
+      attempts++;
+      if (attempts < 4) {
+        throw new Error("fail");
+      }
+      return "success";
+    };
+
+    const result = await withRetry(operation);
+
+    expect(result).toBe("success");
+    expect(attempts).toBe(4); // Default maxRetries is 3
+  });
+
+  it("should delay between retries", async () => {
+    let attempts = 0;
+    const start = Date.now();
+    const operation = async () => {
+      attempts++;
+      if (attempts < 3) {
+        throw new Error("fail");
+      }
+      return "success";
+    };
+
+    await withRetry(operation, { maxRetries: 3, delayMs: 50 });
+
+    const elapsed = Date.now() - start;
+    expect(elapsed).toBeGreaterThanOrEqual(90); // 2 delays of 50ms
+  });
+
+  it("should preserve the error from the last failure", async () => {
+    let attempts = 0;
+    const operation = async () => {
+      attempts++;
+      throw new Error(`fail-${attempts}`);
+    };
+
+    await expect(
+      withRetry(operation, { maxRetries: 2, delayMs: 10 }),
+    ).rejects.toThrow("fail-3");
   });
 });
