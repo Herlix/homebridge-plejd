@@ -89,14 +89,14 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
 
         const room = site.rooms.find((x) => x.roomId === device.roomId);
 
-        let identifier = site.deviceAddress[device.deviceId]!;
+        let identifier = site.outputAddress[device.deviceId]["0"];
+        const twoOutputDeviceId = site.outputAddress[device.deviceId]["1"];
 
-        // When DIM-02, make sure that the next device will have the new index
         if (
-          model.toUpperCase().includes("DIM-02") &&
+          twoOutputDeviceId &&
           devices.find((a) => a.identifier === identifier) !== undefined
         ) {
-          identifier += 1;
+          identifier = twoOutputDeviceId;
         }
 
         const res: Device = {

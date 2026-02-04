@@ -1,3 +1,8 @@
+#### 1.7.1 (2026-02-04)
+
+Added support for relays
+BLE improvements
+
 #### 1.7.0 (2025-09-19)
 
 Reduced message timeout for BLE commands

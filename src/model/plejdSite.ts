@@ -18,7 +18,7 @@ export interface Site {
   stateTimers: StateTimers;
   sitePermission: SitePermission;
   inputAddress: { [key: string]: { [key: string]: number } };
-  outputAddress: OutputAddress;
+  outputAddress: any;
   deviceAddress: { [key: string]: number };
   outputGroups: OutputGroups;
   roomAddress: { [key: string]: number };
