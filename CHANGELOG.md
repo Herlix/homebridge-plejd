@@ -1,5 +1,9 @@
 #### 1.7.2 (2026-02-04)
 
+Expose scenes as buttons
+
+#### 1.7.2 (2026-02-04)
+
 Fix device filtering issue
 
 #### 1.7.1 (2026-02-04)
