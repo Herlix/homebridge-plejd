@@ -181,7 +181,7 @@ export class PlejdService {
     );
 
     if (peripheral.address) {
-      return { value: peripheral.address.toUpperCase() };
+      return { value: peripheral.address.replace(/:/g, "").toUpperCase() };
     }
     const macRegex = /([A-Fa-f0-9]{12})$/;
     const match = peripheral.advertisement.localName.match(macRegex);

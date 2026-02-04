@@ -1,3 +1,7 @@
+#### 1.7.2 (2026-02-04)
+
+Fix device filtering issue
+
 #### 1.7.1 (2026-02-04)
 
 Added support for relays
