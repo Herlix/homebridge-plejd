@@ -100,13 +100,6 @@ export class PlejdService {
     } = {},
   ) => {
     const deviceIdHex = identifier.toString(16).padStart(2, "0");
-    const brightnessCommandPrefix =
-      deviceIdHex + PlejdCommand.RequestNoResponse + PlejdCommand.Brightness;
-
-    this.sendQueue = this.sendQueue.filter(
-      (cmd) =>
-        !cmd.toString("hex").startsWith(brightnessCommandPrefix.toLowerCase()),
-    );
 
     if (!turnOn || !opt.targetBrightness || opt.targetBrightness === 0) {
       const payload =
@@ -120,6 +113,14 @@ export class PlejdService {
       this.sendQueue.unshift(Buffer.from(payload, "hex"));
       return;
     }
+
+    // Filter out any existing brightness commands for this device before adding new ones
+    const brightnessCommandPrefix =
+      deviceIdHex + PlejdCommand.RequestNoResponse + PlejdCommand.Brightness;
+    this.sendQueue = this.sendQueue.filter(
+      (cmd) =>
+        !cmd.toString("hex").startsWith(brightnessCommandPrefix.toLowerCase()),
+    );
 
     const trans = opt.transitionMs || DEFAULT_BRIGHTNESS_TRANSITION_MS;
     const steps = trans > 0 ? Math.round(trans / PLEJD_WRITE_TIMEOUT) : 1;
@@ -137,12 +138,15 @@ export class PlejdService {
       );
       const eightBitBrightness = Math.round(currentStepBrightness * 2.55);
 
+      // Brightness payload: same byte sent twice per Plejd protocol
+      const dimHex = eightBitBrightness.toString(16).padStart(2, "0");
       const payload =
         deviceIdHex +
         PlejdCommand.RequestNoResponse +
         PlejdCommand.Brightness +
         "01" +
-        eightBitBrightness.toString(16).padStart(4, "0");
+        dimHex +
+        dimHex;
 
       this.sendQueue.unshift(Buffer.from(payload, "hex"));
     }

@@ -85,7 +85,7 @@ describe("PlejdService updateState", () => {
         const command = item.toString("hex");
         expect(command.substring(2, 6)).toBe(PlejdCommand.RequestNoResponse);
         expect(command.substring(6, 10)).toBe(PlejdCommand.Brightness);
-        expect(command.substring(10, 14)).toBe("0100"); // isOn = true
+        expect(command.substring(10, 12)).toBe("01"); // state = on
       });
 
       for (let step = 1; step <= expectedSteps; step++) {
@@ -100,8 +100,11 @@ describe("PlejdService updateState", () => {
         const eightBitBrightness = Math.round(currentStepBrightness * 2.55);
         const item = queue[expectedSteps - step];
         const command = item.toString("hex");
-        const brightnessHex = command.substring(14, 18);
-        const brightnessValue = parseInt(brightnessHex, 16);
+        // Plejd protocol: same dim byte sent twice (positions 12-14 and 14-16)
+        const dimByte1 = command.substring(12, 14);
+        const dimByte2 = command.substring(14, 16);
+        expect(dimByte1).toBe(dimByte2); // Same byte repeated
+        const brightnessValue = parseInt(dimByte1, 16);
         expect(brightnessValue).toBe(eightBitBrightness);
       }
     });

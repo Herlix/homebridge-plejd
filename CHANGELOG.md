@@ -1,4 +1,8 @@
-#### 1.7.4 (2026-02-04)
+#### 1.7.5 (2026-02-05)
+
+(Try) Fix brightness issue
+
+#### 1.7.4 (2026-02-05)
 
 Reload device cache
 

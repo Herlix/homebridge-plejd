@@ -115,8 +115,14 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
         };
 
         const pre = devices.findIndex((x) => x.identifier === res.identifier);
-        if (pre !== -1 && devices[pre].hidden) {
-          this.log.info(`${res.name} is set to hidden. Will ignore device.`);
+        if (pre !== -1) {
+          if (devices[pre].hidden) {
+            this.log.info(`${res.name} is set to hidden. Will ignore device.`);
+          } else {
+            this.log.debug(
+              `${res.name} already configured manually, skipping cloud config`,
+            );
+          }
         } else {
           devices.push(res);
         }

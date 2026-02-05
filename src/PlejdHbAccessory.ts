@@ -45,6 +45,17 @@ export class PlejdHbAccessory {
       );
 
     if (this.device.outputType === "LIGHT") {
+      // Remove Switch service if it exists (device type may have changed)
+      const existingSwitch = this.accessory.getService(
+        this.platform.Service.Switch,
+      );
+      if (existingSwitch) {
+        this.platform.log.info(
+          `Removing stale Switch service from ${this.device.name} (now LIGHT)`,
+        );
+        this.accessory.removeService(existingSwitch);
+      }
+
       this.service =
         this.accessory.getService(this.platform.Service.Lightbulb) ||
         this.accessory.addService(this.platform.Service.Lightbulb);
@@ -54,6 +65,17 @@ export class PlejdHbAccessory {
         .onGet(this.getBrightness.bind(this))
         .onSet(this.setBrightness.bind(this));
     } else {
+      // Remove Lightbulb service if it exists (device type may have changed)
+      const existingLightbulb = this.accessory.getService(
+        this.platform.Service.Lightbulb,
+      );
+      if (existingLightbulb) {
+        this.platform.log.info(
+          `Removing stale Lightbulb service from ${this.device.name} (now RELAY)`,
+        );
+        this.accessory.removeService(existingLightbulb);
+      }
+
       this.service =
         this.accessory.getService(this.platform.Service.Switch) ||
         this.accessory.addService(this.platform.Service.Switch);
