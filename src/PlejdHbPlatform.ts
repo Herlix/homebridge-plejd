@@ -145,7 +145,9 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
         };
 
         scenes.push(scene);
-        this.log.info(`Found scene: ${scene.name} (index: ${scene.sceneIndex})`);
+        this.log.info(
+          `Found scene: ${scene.name} (index: ${scene.sceneIndex})`,
+        );
       });
     }
 
@@ -187,7 +189,10 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
       "Plejd Devices connected to HomeKit:",
       this.userInputConfig.devices,
     );
-    log.debug("Plejd Scenes connected to HomeKit:", this.userInputConfig.scenes);
+    log.debug(
+      "Plejd Scenes connected to HomeKit:",
+      this.userInputConfig.scenes,
+    );
 
     this.plejdService = new PlejdService(
       this.userInputConfig,
@@ -234,6 +239,7 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
       );
 
       if (existingAccessory) {
+        existingAccessory.context.device = device;
         this.plejdHbAccessories.push(
           new PlejdHbAccessory(
             this,

@@ -577,6 +577,9 @@ export class PlejdService {
 
         // Convert to Homebridge 1-100
         const converted = dim === 0 ? 1 : (100 / 255) * dim;
+        this.log.debug(
+          `Brightness: raw=${dim} (0x${dim.toString(16).padStart(2, "0")}), converted=${converted.toFixed(1)}%`,
+        );
         this.onUpdate(id, isOn, converted);
         break;
       }

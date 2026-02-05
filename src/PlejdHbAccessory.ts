@@ -73,7 +73,7 @@ export class PlejdHbAccessory {
 
   onPlejdUpdates = (isOn: boolean, brightness?: number) => {
     this.platform.log.debug(
-      `Updating Homekit state from ${this.device.name} device state`,
+      `Updating Homekit state from ${this.device.name}: on=${isOn}, brightness=${brightness?.toFixed(1)}%`,
     );
     this.state.isOn = isOn;
 

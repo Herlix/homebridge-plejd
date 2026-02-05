@@ -1,4 +1,8 @@
-#### 1.7.2 (2026-02-04)
+#### 1.7.4 (2026-02-04)
+
+Reload device cache
+
+#### 1.7.3 (2026-02-04)
 
 Expose scenes as buttons
 
