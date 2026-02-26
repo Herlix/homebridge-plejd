@@ -105,5 +105,7 @@ dist
 # TernJS port file
 .tern-port
 
+.homebridge
+
 .claude
 CLAUDE.md
