@@ -1,5 +1,6 @@
 cache/
 **/.DS_Store
+example.json
 # Logs
 logs
 *.log

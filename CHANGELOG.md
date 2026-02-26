@@ -1,3 +1,7 @@
+#### 1.7.6 (2026-02-26)
+
+Extrapolate device information from Manufacturer Data to allow for mac server usage
+
 #### 1.7.5 (2026-02-05)
 
 (Try) Fix brightness issue

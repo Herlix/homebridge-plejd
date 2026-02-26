@@ -51,7 +51,7 @@ export class PlejdService {
     null;
   private isConnecting = false;
   private isAuthenticated = false;
-  private deviceAddress?: string | null = null;
+  private deviceAddress: string | null = null;
   private deviceState = {
     lastPingSuccess: Date.now(),
     consecutivePingFailures: 0,
@@ -179,63 +179,110 @@ export class PlejdService {
   //   -------------- Private -------------- \\
 
   /**
-   *
-   * On linux the address is returned.
-   *
-   * On macos however, the address is not exposed.
-   * The mac is static on the Plejd devices and sometimes exposed in the localName property,
-   * this is used to identify the device.
-   *
-   * @param peripheral in question
-   * @returns
+   * Extracts the device MAC address from a peripheral using multiple strategies:
+   * 1. peripheral.address (Linux - noble exposes it directly)
+   * 2. Manufacturer data bytes 6-11 reversed (Plejd mesh advertisements)
+   * 3. Single-device fallback (if only one device configured)
    */
   private extractAddress(peripheral: noble.Peripheral): string | null {
     this.log.debug(
       `Peripheral advertisement: ${JSON.stringify(peripheral.advertisement)}`,
     );
 
+    // 1. Direct address from noble (Linux)
     if (peripheral.address) {
-      return peripheral.address.replace(/:/g, "").toUpperCase();
-    }
-    const macRegex = /([A-Fa-f0-9]{12})$/;
-    const match = peripheral.advertisement.localName.match(macRegex);
-
-    if (!match || !match[1]) {
-      // In the rare case a user has one device and it does not expose its MAC address
-      if (this.config.devices.length === 1) {
-        return this.config.devices[0].plejdDeviceId;
-      } else {
-        return null;
+      const cleaned = peripheral.address.replace(/[:-]/g, "").toUpperCase();
+      if (/^[A-F0-9]{12}$/.test(cleaned)) {
+        return cleaned;
       }
     }
-    return match[1].toUpperCase();
+
+    // 2. Extract from manufacturer data (macOS - bytes 6-11 reversed)
+    const mfgMac = this.extractAddressFromManufacturerData(peripheral);
+    if (mfgMac) {
+      return mfgMac;
+    }
+
+    // 3. Single device fallback
+    if (this.config.devices.length === 1) {
+      return this.config.devices[0].plejdDeviceId;
+    }
+
+    return null;
+  }
+
+  /**
+   * Plejd manufacturer data (19 bytes):
+   * [0-1] Company ID (0x0377)
+   * [2-4] Header
+   * [5]   Varies
+   * [6-11] Device MAC address (reversed byte order)
+   * [12-17] Stable mesh identifier
+   * [18] Padding (0x00)
+   *
+   * Bytes 6-11 may contain the advertising device's MAC or a relayed
+   * device's MAC. We check against known devices to filter.
+   */
+  private extractAddressFromManufacturerData(
+    peripheral: noble.Peripheral,
+  ): string | null {
+    const mfgData = peripheral.advertisement.manufacturerData;
+    if (!mfgData || mfgData.length < 18) {
+      return null;
+    }
+
+    const mac = Buffer.from(mfgData.subarray(6, 12))
+      .reverse()
+      .toString("hex")
+      .toUpperCase();
+
+    if (this.config.devices.find((x) => x.plejdDeviceId === mac)) {
+      this.log.debug(`Extracted MAC from manufacturer data: ${mac}`);
+      return mac;
+    }
+
+    return null;
   }
 
   /**
    * Gets a stable identifier for blacklisting. Uses MAC if available,
-   * falls back to peripheral.uuid on macOS.
+   * falls back to manufacturer data stable bytes (12-17) on macOS,
+   * then peripheral.uuid as last resort.
    */
-  private getPeripheralIdentifier(peripheral: noble.Peripheral): string {
-    const macResult = this.extractAddress(peripheral);
+  private getPeripheralIdentifier(
+    peripheral: noble.Peripheral,
+    resolvedAddress?: string | null,
+  ): string {
+    const macResult = resolvedAddress ?? this.extractAddress(peripheral);
     if (macResult) {
       return macResult;
     }
+
+    // Manufacturer data bytes 12-17 are stable per physical device,
+    // even when the BLE address rotates on macOS.
+    const mfgData = peripheral.advertisement.manufacturerData;
+    if (mfgData && mfgData.length >= 18) {
+      return `mfg:${mfgData.subarray(12, 18).toString("hex").toUpperCase()}`;
+    }
+
     return `uuid:${peripheral.uuid}`;
   }
 
+  private static readonly PROBE_NEEDED = "PROBE_NEEDED";
+
   /**
-   *
-   * Checks if the peripheral is suitable, will blacklist if not suitable.
-   *
-   * A device can be blacklisted in a previous scan, this would be a unsuitable device.
-   *
-   * @param peripheral
-   * @returns
+   * Checks if the peripheral is suitable for connection.
+   * Returns the device MAC, "PROBE_NEEDED" if MAC must be determined after
+   * connecting (macOS fallback), or null if the device should be skipped.
    */
   private isSuitableDeviceAddress = async (
     peripheral: noble.Peripheral,
   ): Promise<string | null> => {
-    const peripheralId = this.getPeripheralIdentifier(peripheral);
+    const deviceAddress = this.extractAddress(peripheral);
+    const peripheralId = this.getPeripheralIdentifier(
+      peripheral,
+      deviceAddress,
+    );
 
     // Check blacklist first using fallback-safe identifier
     if (this.isDeviceBlacklisted(peripheralId)) {
@@ -243,27 +290,26 @@ export class PlejdService {
       return null;
     }
 
-    const deviceAddressResult = this.extractAddress(peripheral);
-    if (!deviceAddressResult) {
-      this.log.warn(
-        `Unable to extract MAC address from peripheral: ${JSON.stringify(peripheral.advertisement)} (uuid: ${peripheral.uuid})`,
+    if (deviceAddress) {
+      if (
+        !this.config.devices.find((x) => x.plejdDeviceId === deviceAddress)
+      ) {
+        this.blacklistDevice(deviceAddress, "not_found");
+        this.log.warn(`Device ${deviceAddress} not found in known devices`);
+        return null;
+      }
+    } else {
+      this.log.info(
+        `Cannot extract MAC from peripheral (uuid: ${peripheral.uuid}), will probe after connecting`,
       );
-      this.blacklistDevice(peripheralId, "mac_extraction_failed");
-      return null;
-    }
-    const deviceAddress = deviceAddressResult;
-
-    if (!this.config.devices.find((x) => x.plejdDeviceId === deviceAddress)) {
-      this.blacklistDevice(deviceAddress, "not_found");
-      this.log.warn(`Device ${deviceAddress} not found in known devices`);
-      return null;
     }
 
     if (peripheral.rssi < -90) {
+      const id = deviceAddress ?? peripheralId;
       this.log.info(
-        `Skipping device with weak signal: ${deviceAddress} (${peripheral.rssi} dB)`,
+        `Skipping device with weak signal: ${id} (${peripheral.rssi} dB)`,
       );
-      this.blacklistDevice(deviceAddress, "weak_signal");
+      this.blacklistDevice(id, "weak_signal");
       return null;
     }
 
@@ -272,11 +318,12 @@ export class PlejdService {
       return null;
     }
 
+    const displayAddr = deviceAddress ?? "unknown (will probe)";
     this.log.info(
-      `Discovered | ${peripheral.advertisement.localName} | addr: ${deviceAddress} | Signal strength: ${this.mapRssiToQuality(peripheral.rssi)} (${peripheral.rssi} dB)`,
+      `Discovered | ${peripheral.advertisement.localName} | addr: ${displayAddr} | Signal strength: ${this.mapRssiToQuality(peripheral.rssi)} (${peripheral.rssi} dB)`,
     );
 
-    return deviceAddress;
+    return deviceAddress ?? PlejdService.PROBE_NEEDED;
   };
 
   private connectToPeripheral = async (
@@ -490,7 +537,11 @@ export class PlejdService {
         this.log.warn("Ping failed: ", error);
       }
 
-      if (this.deviceAddress && this.deviceState.consecutivePingFailures >= 3) {
+      if (
+        this.deviceAddress &&
+        this.deviceAddress !== PlejdService.PROBE_NEEDED &&
+        this.deviceState.consecutivePingFailures >= 3
+      ) {
         this.log.warn("Ping failed 3 times, reconnecting to mesh");
         this.blacklistDevice(this.deviceAddress, "Ping failed 3 times");
         this.stopPlejdPing();
@@ -617,32 +668,100 @@ export class PlejdService {
       this.log.error("Device address not set");
       return;
     }
-    this.log.info("Setting up ping pong communication with Plejd device");
-    this.startPlejdPing(peripheral, pingChar);
-    this.log.debug("Starting queue handler for messages to Plejd device");
-
-    const addressBuffer = Buffer.from(
-      this.deviceAddress.replace(/:/g, ""),
-      "hex",
-    ).reverse();
-
-    this.startQueueProcessor(dataChar, addressBuffer);
 
     try {
-      this.log.info("Subscribing to incomming messages");
+      this.log.info("Subscribing to incoming messages");
       await race(() => lastDataChar.subscribeAsync());
+
+      // On macOS: probe for the correct device MAC via mesh notifications
+      if (this.deviceAddress === PlejdService.PROBE_NEEDED) {
+        this.log.info(
+          "Probing for device MAC address via mesh notifications...",
+        );
+        const probedAddress = await this.probeDeviceAddress(lastDataChar);
+        if (!probedAddress) {
+          this.log.error(
+            "Failed to determine device MAC address — no identifiable mesh traffic within timeout",
+          );
+          await this.tryDisconnect(peripheral);
+          await this.tryStartScanning();
+          return;
+        }
+        this.deviceAddress = probedAddress;
+        this.log.info(`Device identified as ${probedAddress}`);
+      }
+
+      // Start ping only after MAC is resolved
+      this.log.info("Setting up ping pong communication with Plejd device");
+      this.startPlejdPing(peripheral, pingChar);
+
+      const addressBuffer = Buffer.from(
+        this.deviceAddress.replace(/:/g, ""),
+        "hex",
+      ).reverse();
+
+      this.log.debug("Starting queue handler for messages to Plejd device");
+      this.startQueueProcessor(dataChar, addressBuffer);
+
       lastDataChar.on("data", async (data, isNotification) => {
         await this.handleNotification(data, isNotification, addressBuffer);
       });
     } catch (e) {
-      this.blacklistDevice(
-        this.deviceAddress,
-        `Communication setup failed: ${e}`,
-      );
+      if (this.deviceAddress !== PlejdService.PROBE_NEEDED) {
+        this.blacklistDevice(
+          this.deviceAddress,
+          `Communication setup failed: ${e}`,
+        );
+      }
       await this.tryDisconnect(peripheral);
       this.log.error("Failed to subscribe to Plejd device", e);
     }
   };
+
+  /**
+   * Determines the connected device's MAC by listening for mesh notifications
+   * and trying to decode them with each known device's MAC.
+   * A valid decode (known command code) identifies the correct MAC.
+   */
+  private probeDeviceAddress(
+    lastDataChar: noble.Characteristic,
+  ): Promise<string | null> {
+    const knownCommands = new Set(Object.values(PlejdCommand));
+
+    return new Promise<string | null>((resolve) => {
+      const timeout = setTimeout(() => {
+        lastDataChar.removeAllListeners("data");
+        resolve(null);
+      }, 30_000);
+
+      const handler = (data: Buffer) => {
+        for (const device of this.config.devices) {
+          const addressBuffer = Buffer.from(
+            device.plejdDeviceId.replace(/:/g, ""),
+            "hex",
+          ).reverse();
+
+          const decoded = plejdEncodeDecode(
+            this.config.cryptoKey,
+            addressBuffer,
+            data,
+          );
+
+          if (decoded.length >= 5) {
+            const command = decoded.toString("hex", 3, 5);
+            if (knownCommands.has(command as PlejdCommand)) {
+              clearTimeout(timeout);
+              lastDataChar.removeAllListeners("data");
+              resolve(device.plejdDeviceId);
+              return;
+            }
+          }
+        }
+      };
+
+      lastDataChar.on("data", handler);
+    });
+  }
 
   private authenticate = async (
     peripheral: noble.Peripheral,
@@ -666,7 +785,12 @@ export class PlejdService {
       this.isAuthenticated = true;
     } catch (e) {
       this.isAuthenticated = false;
-      this.blacklistDevice(this.deviceAddress, `Authentication failed: ${e}`);
+      if (
+        this.deviceAddress &&
+        this.deviceAddress !== PlejdService.PROBE_NEEDED
+      ) {
+        this.blacklistDevice(this.deviceAddress, `Authentication failed: ${e}`);
+      }
       await this.tryDisconnect(peripheral);
       this.log.error("Failed to authenticate to Plejd device", e);
     }
@@ -795,16 +919,12 @@ export class PlejdService {
     this.stopPlejdPing();
     this.stopQueueProcessor();
     this.removeDiscoverHandler();
-    if (this.blacklistCleanupInterval) {
-      clearInterval(this.blacklistCleanupInterval);
-      this.blacklistCleanupInterval = null;
-    }
     this.sendQueue = [];
     this.isAuthenticated = false;
     this.deviceState = {
       lastPingSuccess: Date.now(),
       consecutivePingFailures: 0,
     };
-    this.deviceAddress = undefined;
+    this.deviceAddress = null;
   }
 }

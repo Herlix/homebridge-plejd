@@ -1,6 +1,5 @@
 import { Logger } from "homebridge";
 import { Site } from "./model/plejdSite.js";
-
 const API_APP_ID = "zHtVqXt8k4yFyk2QGmgp48D9xZr2G94xWYnF4dak";
 const API_BASE_URL = "https://cloud.plejd.com/parse/";
 const API_LOGIN_URL = "login";
