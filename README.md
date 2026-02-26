@@ -17,9 +17,7 @@
 
 ## Docker Compose
 
-I'm running this in docker-compose on a Raspberry PI 4b 8gb.
-
-Raspberry pi is running Debian Bullseye (Raspberry Pi OS) with docker and docker compose installed, nothing extra.
+For linux users it is possible to use docker. For mac and perhaps windows users it is not possible. (Windows I have not tested at all)
 
 ```yml
 homebridge:
@@ -28,7 +26,7 @@ homebridge:
     network_mode: host
     privileged: true
     volumes:
-        - /home/pi/.homebridge:/homebridge
+        - /[your user dir]/.homebridge:/homebridge
     logging:
         driver: json-file
         options:
@@ -38,13 +36,20 @@ homebridge:
 
 ### If not docker: Dependencies needed for Raspberry PI
 
-This is tested on a raspberry pi 3b+ & 4b using DIM-02 and DIM-01. Please let me know if there's any issues with other units. Feel free to poke around.
+The underlying BLE library [@abandonware/Noble](https://github.com/abandonware/noble) requires some dependencies to be installed on the host system.
 
 ```bash
 sudo apt-get install bluetooth bluez libbluetooth-dev libudev-dev
 ```
 
-Check out ble lib [@abandonware/Noble](https://github.com/abandonware/noble) for you specific platform
+
+## Installation on a mac
+
+You will need to install it locally on your mac to gain BLE access. 
+
+You will also need to grant bluetooth access to node via System Preferences -> Security & Privacy -> Privacy -> Bluetooth -> add node
+
+you might find the node binary in /usr/local/bin/node try `which node` in the terminal. 
 
 ### Settings
 
