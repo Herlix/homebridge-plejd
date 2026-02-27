@@ -1,3 +1,7 @@
+#### 1.7.9 (2026-02-27)
+
+Fix double scanning issue
+
 #### 1.7.8 (2026-02-27)
 
 Fix BLE reset loop issue

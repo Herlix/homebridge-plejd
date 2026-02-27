@@ -50,6 +50,7 @@ export class PlejdService {
   private discoverHandler: ((peripheral: noble.Peripheral) => void) | null =
     null;
   private isConnecting = false;
+  private isScanning = false;
   private isAuthenticated = false;
   private deviceAddress: string | null = null;
   private deviceState = {
@@ -171,8 +172,10 @@ export class PlejdService {
   configureBLE = () => {
     this.startBlacklistCleanup();
     noble.on("stateChange", async (state) => {
-      this.log.debug(`Noble State changed: ${state}`);
-      await this.tryStartScanning();
+      this.log.info(`Noble State changed: ${state}`);
+      if (state === "poweredOn") {
+        await this.tryStartScanning();
+      }
     });
   };
 
@@ -330,12 +333,6 @@ export class PlejdService {
     peripheral: noble.Peripheral,
     deviceAddress: string,
   ) => {
-    if (this.isConnecting) {
-      this.log.debug("Connection already in progress, skipping...");
-      return {};
-    }
-
-    this.isConnecting = true;
     let retryCount = 0;
     const maxRetries = 3;
 
@@ -796,6 +793,12 @@ export class PlejdService {
   };
 
   private tryStartScanning = async () => {
+    if (this.isScanning) {
+      this.log.debug("Scanning already in progress, skipping...");
+      return;
+    }
+    this.isScanning = true;
+
     this.cleanup();
     await noble.stopScanningAsync();
     try {
@@ -813,6 +816,7 @@ export class PlejdService {
         this.discoverHandler = async (peripheral: noble.Peripheral) => {
           const r = await this.isSuitableDeviceAddress(peripheral);
           if (r) {
+            this.isConnecting = true; // Set synchronously to prevent race with second peripheral
             this.stopDiscoverTimeout();
             this.removeDiscoverHandler();
             await noble.stopScanningAsync();
@@ -826,6 +830,8 @@ export class PlejdService {
       this.log.error("Failed to start scanning for Plejd devices", e);
       await delay(10000);
       await this.tryStartScanning();
+    } finally {
+      this.isScanning = false;
     }
   };
 
@@ -910,6 +916,7 @@ export class PlejdService {
     this.stopDiscoverTimeout();
     this.sendQueue = [];
     this.isConnecting = false;
+    this.isScanning = false;
     this.isAuthenticated = false;
     this.deviceState = {
       lastPingSuccess: Date.now(),
