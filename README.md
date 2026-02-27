@@ -47,9 +47,9 @@ sudo apt-get install bluetooth bluez libbluetooth-dev libudev-dev
 
 You will need to install it locally on your mac to gain BLE access. 
 
-You will also need to grant bluetooth access to node via System Preferences -> Security & Privacy -> Privacy -> Bluetooth -> add node
+You will also need to grant bluetooth access to the running server via System Preferences -> Security & Privacy -> Privacy -> Bluetooth -> add node + homebridge + hb-service
 
-you might find the node binary in /usr/local/bin/node try `which node` in the terminal. 
+You might find the node binary in /usr/local/bin/node try `which node` in the terminal, do the same for homebridge and hb-service
 
 ### Settings
 
