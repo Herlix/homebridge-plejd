@@ -349,7 +349,7 @@ export class PlejdService {
             );
           }
 
-          await peripheral.connectAsync();
+          await race(() => peripheral.connectAsync(), 10_000);
           this.log.info(
             `Connected to mesh | ${peripheral.advertisement.localName} (addr: ${deviceAddress})`,
           );
@@ -387,13 +387,14 @@ export class PlejdService {
 
       // All retries exhausted
       this.log.error(
-        "Max reconnection attempts reached. Resetting noble and starting scan.",
+        "Max reconnection attempts reached, will restart scan.",
       );
-      noble.reset();
-      await this.tryStartScanning();
     } finally {
       this.isConnecting = false;
     }
+
+    // Restart scanning after isConnecting is cleared
+    await this.tryStartScanning();
 
     return {};
   };
@@ -809,26 +810,14 @@ export class PlejdService {
           10_000,
         );
 
-        this.discoverHandler = async (peripheral: noble.Peripheral) => {
-          const timeOut = () => {
-            if (this.discoverTimeout) {
-              clearTimeout(this.discoverTimeout);
-            }
+        this.resetDiscoverTimeout();
 
-            this.discoverTimeout = setTimeout(async () => {
-              if (!this.isAuthenticated) {
-                this.log.warn("No device found during scan, restarting scan");
-                this.removeDiscoverHandler();
-                await noble.stopScanningAsync();
-                await this.tryStartScanning();
-              }
-            }, 30000);
-          };
+        this.discoverHandler = async (peripheral: noble.Peripheral) => {
           const r = await this.isSuitableDeviceAddress(peripheral);
           if (r) {
+            this.stopDiscoverTimeout();
             this.removeDiscoverHandler();
             await this.connectToPeripheral(peripheral, r);
-            timeOut();
           }
           // If no value, continue listening for more peripherals
         };
@@ -919,12 +908,33 @@ export class PlejdService {
     this.stopPlejdPing();
     this.stopQueueProcessor();
     this.removeDiscoverHandler();
+    this.stopDiscoverTimeout();
     this.sendQueue = [];
+    this.isConnecting = false;
     this.isAuthenticated = false;
     this.deviceState = {
       lastPingSuccess: Date.now(),
       consecutivePingFailures: 0,
     };
     this.deviceAddress = null;
+  }
+
+  private stopDiscoverTimeout() {
+    if (this.discoverTimeout) {
+      clearTimeout(this.discoverTimeout);
+      this.discoverTimeout = null;
+    }
+  }
+
+  private resetDiscoverTimeout() {
+    this.stopDiscoverTimeout();
+    this.discoverTimeout = setTimeout(async () => {
+      if (!this.isAuthenticated) {
+        this.log.warn("No device found during scan, restarting scan");
+        this.removeDiscoverHandler();
+        await noble.stopScanningAsync();
+        await this.tryStartScanning();
+      }
+    }, 30_000);
   }
 }

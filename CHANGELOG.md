@@ -1,3 +1,7 @@
+#### 1.7.7 (2026-02-27)
+
+Fix BLE reset issue
+
 #### 1.7.6 (2026-02-26)
 
 Extrapolate device information from Manufacturer Data to allow for mac server usage
