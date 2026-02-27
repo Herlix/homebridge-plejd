@@ -1,3 +1,7 @@
+#### 1.8.0 (2026-02-27)
+
+Complete rewrite and simplification of BLE logic to make it more stable after the latest releases.
+
 #### 1.7.9 (2026-02-27)
 
 Fix double scanning issue

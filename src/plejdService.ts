@@ -6,6 +6,13 @@ import {
   DEFAULT_BRIGHTNESS_TRANSITION_MS,
   PLEJD_PING_TIMEOUT,
   PLEJD_WRITE_TIMEOUT,
+  MIN_PAYLOAD_LENGTH,
+  AUTH_STEP_DELAY,
+  PROBE_TIMEOUT,
+  CONNECT_TIMEOUT,
+  RECONNECT_DELAY,
+  MAX_PING_FAILURES,
+  DEVICE_COOLDOWN,
 } from "./constants.js";
 import {
   delay,
@@ -43,25 +50,14 @@ export enum PlejdCommand {
 
 export class PlejdService {
   private sendQueue: Buffer[] = [];
-  private discoverTimeout: NodeJS.Timeout | null = null;
-  private plejdTimeout: NodeJS.Timeout | null = null;
-  private queueTimeout: NodeJS.Timeout | null = null;
-  private blacklistCleanupInterval: NodeJS.Timeout | null = null;
+  private pingInterval: NodeJS.Timeout | null = null;
+  private queueInterval: NodeJS.Timeout | null = null;
   private discoverHandler: ((peripheral: noble.Peripheral) => void) | null =
     null;
-  private isConnecting = false;
-  private isScanning = false;
-  private isAuthenticated = false;
-  private deviceAddress: string | null = null;
-  private deviceState = {
-    lastPingSuccess: Date.now(),
-    consecutivePingFailures: 0,
-  };
-  private deviceBlacklist: Map<string, { until: number; attempts: number }> =
-    new Map();
-  private readonly MAX_FAILURES = 5;
-  private readonly BLACKLIST_DURATION = 5 * 60 * 1000;
-  private readonly EXTENDED_BLACKLIST_DURATION = 30 * 60 * 1000;
+  private loopGeneration = 0;
+  private failedDevices: Map<string, number> = new Map(); // MAC → cooldown expiry
+
+  private static readonly PROBE_NEEDED = "PROBE_NEEDED";
 
   constructor(
     private readonly config: UserInputConfig,
@@ -73,8 +69,9 @@ export class PlejdService {
     ) => void,
   ) {}
 
+  // --- Public API --- \\
+
   /**
-   *
    * @returns the current queue items
    */
   readQueue(): Buffer[] {
@@ -82,14 +79,13 @@ export class PlejdService {
   }
 
   /**
-   *
    * Update the state of a device
    *
    * @param identifier: The device identifier
    * @param turnOn: The new state of the device
-   * @param targetBrightness: The new brightness of the device between 0-100
-   * @param currentBrightness: The current brightness of the device between 0-100
-   * @param transitionMS: split brightness into steps, adding a transition to the brightness change
+   * @param opt.targetBrightness: The new brightness of the device between 0-100
+   * @param opt.currentBrightness: The current brightness of the device between 0-100
+   * @param opt.transitionMs: split brightness into steps, adding a transition to the brightness change
    */
   updateState = async (
     identifier: number,
@@ -162,24 +158,478 @@ export class PlejdService {
     const sceneIndexHex = sceneIndex.toString(16).padStart(2, "0");
     // Payload format: [address][version][command_type][command][scene_index]
     // = 00 01 10 00 21 <sceneIndex>
-    const payload =
-      "00" + "0110" + PlejdCommand.Scene + sceneIndexHex;
+    const payload = "00" + "0110" + PlejdCommand.Scene + sceneIndexHex;
 
     this.log.debug(`BLE: Triggering scene ${sceneIndex}`);
     this.sendQueue.unshift(Buffer.from(payload, "hex"));
   };
 
   configureBLE = () => {
-    this.startBlacklistCleanup();
     noble.on("stateChange", async (state) => {
       this.log.info(`Noble State changed: ${state}`);
       if (state === "poweredOn") {
-        await this.tryStartScanning();
+        this.runLoop();
+      } else if (state === "poweredOff") {
+        this.log.info("Bluetooth powered off, cleaning up connections");
+        this.cancelLoop();
       }
     });
   };
 
-  //   -------------- Private -------------- \\
+  // --- Connection loop --- \\
+
+  /**
+   * Cancel any in-flight connection loop by incrementing the generation counter.
+   * Stops timers, scanning, and removes discover handler.
+   */
+  private cancelLoop() {
+    this.loopGeneration++;
+    this.stopPing();
+    this.stopQueue();
+    this.removeDiscoverHandler();
+    try {
+      noble.stopScanning();
+    } catch {
+      // Ignore — may not be scanning
+    }
+  }
+
+  /**
+   * Main connection loop. Cancels any previous loop, then repeatedly
+   * attempts to connect until the generation changes (poweredOff).
+   */
+  private async runLoop() {
+    this.cancelLoop();
+    const gen = this.loopGeneration;
+
+    while (gen === this.loopGeneration) {
+      try {
+        await this.connectAndRun(gen);
+      } catch (error) {
+        if (gen !== this.loopGeneration) return;
+        this.log.error("Connection cycle failed:", error);
+      }
+
+      // Delay before retrying (unless generation changed)
+      if (gen === this.loopGeneration) {
+        await delay(RECONNECT_DELAY);
+      }
+    }
+  }
+
+  /**
+   * Single connection attempt: scan → connect → discover → auth → probe → run.
+   * Throws on any failure so the outer loop can retry.
+   */
+  private async connectAndRun(gen: number) {
+    // 1. Scan for a suitable device
+    const { peripheral, address } = await this.scanForDevice(gen);
+    if (gen !== this.loopGeneration) return;
+
+    let deviceAddress = address;
+
+    try {
+      // 2. Connect
+      this.log.info(
+        `Connecting to ${peripheral.advertisement.localName} (addr: ${deviceAddress})`,
+      );
+      await race(() => peripheral.connectAsync(), CONNECT_TIMEOUT);
+      if (gen !== this.loopGeneration) {
+        await this.tryDisconnect(peripheral);
+        return;
+      }
+
+      this.log.info(
+        `Connected to mesh | ${peripheral.advertisement.localName} (addr: ${deviceAddress})`,
+      );
+
+      // 3. Discover characteristics
+      const characteristics = await this.discoverCharacteristics(peripheral);
+      if (gen !== this.loopGeneration) {
+        await this.tryDisconnect(peripheral);
+        return;
+      }
+
+      const authChar = characteristics.find(
+        (c) => c.uuid === PlejdCharacteristics.Auth,
+      );
+      const lastDataChar = characteristics.find(
+        (c) => c.uuid === PlejdCharacteristics.LastData,
+      );
+      const pingChar = characteristics.find(
+        (c) => c.uuid === PlejdCharacteristics.Ping,
+      );
+      const dataChar =
+        peripheral?.services[0]?.characteristics?.find(
+          (c) => c.uuid === PlejdCharacteristics.Data,
+        ) ?? null;
+
+      if (!authChar || !lastDataChar || !pingChar || !dataChar) {
+        throw new Error(
+          `Missing required characteristics: auth=${!!authChar}, lastData=${!!lastDataChar}, ping=${!!pingChar}, data=${!!dataChar}`,
+        );
+      }
+
+      // 4. Authenticate
+      await this.authenticate(authChar);
+      if (gen !== this.loopGeneration) {
+        await this.tryDisconnect(peripheral);
+        return;
+      }
+
+      // 5. Subscribe + probe MAC if needed
+      this.log.info("Subscribing to incoming messages");
+      await race(() => lastDataChar.subscribeAsync());
+
+      if (deviceAddress === PlejdService.PROBE_NEEDED) {
+        this.log.info(
+          "Probing for device MAC address via mesh notifications...",
+        );
+        const probedAddress = await this.probeDeviceAddress(lastDataChar);
+        if (!probedAddress) {
+          throw new Error(
+            "Failed to determine device MAC address — no identifiable mesh traffic within timeout",
+          );
+        }
+        deviceAddress = probedAddress;
+        this.log.info(`Device identified as ${probedAddress}`);
+      }
+
+      if (gen !== this.loopGeneration) {
+        await this.tryDisconnect(peripheral);
+        return;
+      }
+
+      // Success — clear cooldowns
+      this.failedDevices.clear();
+
+      const addressBuffer = Buffer.from(
+        deviceAddress.replace(/:/g, ""),
+        "hex",
+      ).reverse();
+
+      // 6. Run (ping + queue + notifications) until failure
+      await this.runConnected(
+        gen,
+        peripheral,
+        { pingChar, lastDataChar, dataChar },
+        addressBuffer,
+      );
+    } catch (error) {
+      // Add device to cooldown on failure
+      if (
+        deviceAddress &&
+        deviceAddress !== PlejdService.PROBE_NEEDED
+      ) {
+        this.failedDevices.set(deviceAddress, Date.now() + DEVICE_COOLDOWN);
+      }
+      await this.tryDisconnect(peripheral);
+      throw error;
+    }
+  }
+
+  // --- Scanning --- \\
+
+  /**
+   * Scans for the first suitable Plejd peripheral.
+   * Returns the peripheral and its resolved address (or PROBE_NEEDED).
+   */
+  private scanForDevice(
+    gen: number,
+  ): Promise<{ peripheral: noble.Peripheral; address: string }> {
+    return new Promise<{ peripheral: noble.Peripheral; address: string }>(
+      (resolve, reject) => {
+        if (gen !== this.loopGeneration) {
+          reject(new Error("Generation changed before scan started"));
+          return;
+        }
+
+        this.log.info("Scanning for Plejd devices");
+
+        this.discoverHandler = (peripheral: noble.Peripheral) => {
+          if (gen !== this.loopGeneration) {
+            this.removeDiscoverHandler();
+            noble.stopScanning();
+            reject(new Error("Generation changed during scan"));
+            return;
+          }
+
+          const deviceAddress = this.extractAddress(peripheral);
+
+          // If MAC extracted but not in config, skip
+          if (
+            deviceAddress &&
+            !this.config.devices.find(
+              (x) => x.plejdDeviceId === deviceAddress,
+            )
+          ) {
+            this.log.debug(
+              `Skipping unknown device: ${deviceAddress}`,
+            );
+            return;
+          }
+
+          // If MAC extracted and in cooldown, skip
+          if (deviceAddress) {
+            const cooldownExpiry = this.failedDevices.get(deviceAddress);
+            if (cooldownExpiry && Date.now() < cooldownExpiry) {
+              this.log.debug(
+                `Skipping device in cooldown: ${deviceAddress}`,
+              );
+              return;
+            }
+          }
+
+          const address = deviceAddress ?? PlejdService.PROBE_NEEDED;
+          const displayAddr =
+            address === PlejdService.PROBE_NEEDED
+              ? "unknown (will probe)"
+              : address;
+
+          this.log.info(
+            `Discovered | ${peripheral.advertisement.localName} | addr: ${displayAddr} | RSSI: ${peripheral.rssi} dB`,
+          );
+
+          this.removeDiscoverHandler();
+          noble.stopScanning();
+          resolve({ peripheral, address });
+        };
+
+        noble.on("discover", this.discoverHandler);
+
+        noble.startScanning([PlejdCharacteristics.Service], false, (err) => {
+          if (err) {
+            this.removeDiscoverHandler();
+            reject(new Error(`Failed to start scanning: ${err}`));
+          }
+        });
+      },
+    );
+  }
+
+  // --- Device setup --- \\
+
+  private async discoverCharacteristics(
+    peripheral: noble.Peripheral,
+  ): Promise<noble.Characteristic[]> {
+    this.log.info("Discovering characteristics");
+    const services = [PlejdCharacteristics.Service];
+    const characteristicIds = [
+      PlejdCharacteristics.Data,
+      PlejdCharacteristics.LastData,
+      PlejdCharacteristics.Auth,
+      PlejdCharacteristics.Ping,
+    ];
+
+    const { characteristics } =
+      await peripheral.discoverSomeServicesAndCharacteristicsAsync(
+        services,
+        characteristicIds,
+      );
+    this.log.info("Characteristics discovered");
+    return characteristics;
+  }
+
+  private async authenticate(authChar: noble.Characteristic) {
+    this.log.info("Authenticating to Plejd device");
+    await race(() => authChar.writeAsync(Buffer.from([0x00]), false));
+    await delay(AUTH_STEP_DELAY);
+    const data = await race(() => authChar.readAsync());
+    await delay(AUTH_STEP_DELAY);
+    await race(() =>
+      authChar.writeAsync(plejdCharResp(this.config.cryptoKey, data), false),
+    );
+    await delay(AUTH_STEP_DELAY);
+    this.log.info("Authentication successful");
+  }
+
+  /**
+   * Determines the connected device's MAC by listening for mesh notifications
+   * and trying to decode them with each known device's MAC.
+   * A valid decode (known command code) identifies the correct MAC.
+   */
+  private probeDeviceAddress(
+    lastDataChar: noble.Characteristic,
+  ): Promise<string | null> {
+    const knownCommands = new Set(Object.values(PlejdCommand));
+
+    return new Promise<string | null>((resolve) => {
+      const timeout = setTimeout(() => {
+        lastDataChar.removeAllListeners("data");
+        resolve(null);
+      }, PROBE_TIMEOUT);
+
+      const handler = (data: Buffer) => {
+        for (const device of this.config.devices) {
+          const addressBuffer = Buffer.from(
+            device.plejdDeviceId.replace(/:/g, ""),
+            "hex",
+          ).reverse();
+
+          const decoded = plejdEncodeDecode(
+            this.config.cryptoKey,
+            addressBuffer,
+            data,
+          );
+
+          if (decoded.length >= 5) {
+            const command = decoded.toString("hex", 3, 5);
+            if (knownCommands.has(command as PlejdCommand)) {
+              clearTimeout(timeout);
+              lastDataChar.removeAllListeners("data");
+              resolve(device.plejdDeviceId);
+              return;
+            }
+          }
+        }
+      };
+
+      lastDataChar.on("data", handler);
+    });
+  }
+
+  // --- Running --- \\
+
+  /**
+   * Runs the connected session: ping, queue processing, and notification handling.
+   * Returns a promise that rejects when the connection is lost.
+   */
+  private runConnected(
+    gen: number,
+    peripheral: noble.Peripheral,
+    chars: {
+      pingChar: noble.Characteristic;
+      lastDataChar: noble.Characteristic;
+      dataChar: noble.Characteristic;
+    },
+    addressBuffer: Buffer,
+  ): Promise<void> {
+    return new Promise<void>((_, reject) => {
+      if (gen !== this.loopGeneration) {
+        reject(new Error("Generation changed before run started"));
+        return;
+      }
+
+      // Handle disconnect
+      peripheral.once("disconnect", () => {
+        this.log.info("Disconnected from mesh");
+        this.stopPing();
+        this.stopQueue();
+        reject(new Error("Peripheral disconnected"));
+      });
+
+      // Start ping with local failure counter
+      this.startPing(gen, chars.pingChar, (error) => {
+        this.stopPing();
+        this.stopQueue();
+        this.tryDisconnect(peripheral);
+        reject(error);
+      });
+
+      // Start queue processor
+      this.log.debug("Starting queue handler for messages to Plejd device");
+      this.startQueue(chars.dataChar, addressBuffer);
+
+      // Listen for notifications
+      chars.lastDataChar.on("data", async (data, isNotification) => {
+        await this.handleNotification(data, isNotification, addressBuffer);
+      });
+
+      this.log.info("Connection fully established — running");
+    });
+  }
+
+  private startPing(
+    gen: number,
+    pingChar: noble.Characteristic,
+    onFail: (error: Error) => void,
+  ) {
+    this.stopPing();
+    let consecutiveFailures = 0;
+
+    const performPing = async () => {
+      if (gen !== this.loopGeneration) {
+        this.stopPing();
+        return;
+      }
+
+      try {
+        const ping = randomBytes(1);
+        await race(() => pingChar.writeAsync(ping, false), 2000);
+        const pong = await race(() => pingChar.readAsync(), 2000);
+
+        if (((ping[0] + 1) & 0xff) !== pong[0]) {
+          this.log.error(
+            "Ping pong communication failed, missing pong response",
+          );
+          consecutiveFailures++;
+        } else {
+          consecutiveFailures = 0;
+        }
+      } catch (error) {
+        consecutiveFailures++;
+        this.log.warn("Ping failed:", error);
+      }
+
+      if (consecutiveFailures >= MAX_PING_FAILURES) {
+        this.log.warn(
+          `Ping failed ${MAX_PING_FAILURES} times, reconnecting to mesh`,
+        );
+        onFail(new Error("Ping failed too many times"));
+      }
+    };
+
+    this.pingInterval = setInterval(performPing, PLEJD_PING_TIMEOUT);
+  }
+
+  private stopPing() {
+    if (this.pingInterval) {
+      clearInterval(this.pingInterval);
+      this.pingInterval = null;
+    }
+  }
+
+  private startQueue(
+    dataChar: noble.Characteristic,
+    addressBuffer: Buffer,
+  ) {
+    this.stopQueue();
+
+    const processQueue = async () => {
+      const payload = this.sendQueue.pop();
+      if (!payload) return;
+
+      const data = plejdEncodeDecode(
+        this.config.cryptoKey,
+        addressBuffer,
+        payload,
+      );
+      this.log.info(
+        `BLE command sent to ${addressBuffer?.toString("hex") ?? "Unknown"} | ${data.length} bytes | ${data.toString("hex")}`,
+      );
+
+      try {
+        await withRetry(() => race(() => dataChar.writeAsync(data, false)), {
+          maxRetries: 3,
+          delayMs: PLEJD_WRITE_TIMEOUT,
+        });
+      } catch (error) {
+        this.sendQueue.unshift(payload);
+        this.log.error("Failed to send data to device, will retry:", error);
+      }
+    };
+
+    this.queueInterval = setInterval(processQueue, PLEJD_WRITE_TIMEOUT);
+  }
+
+  private stopQueue() {
+    if (this.queueInterval) {
+      clearInterval(this.queueInterval);
+      this.queueInterval = null;
+    }
+  }
+
+  // --- MAC extraction --- \\
 
   /**
    * Extracts the device MAC address from a peripheral using multiple strategies:
@@ -247,322 +697,13 @@ export class PlejdService {
     return null;
   }
 
-  /**
-   * Gets a stable identifier for blacklisting. Uses MAC if available,
-   * falls back to manufacturer data stable bytes (12-17) on macOS,
-   * then peripheral.uuid as last resort.
-   */
-  private getPeripheralIdentifier(
-    peripheral: noble.Peripheral,
-    resolvedAddress?: string | null,
-  ): string {
-    const macResult = resolvedAddress ?? this.extractAddress(peripheral);
-    if (macResult) {
-      return macResult;
-    }
-
-    // Manufacturer data bytes 12-17 are stable per physical device,
-    // even when the BLE address rotates on macOS.
-    const mfgData = peripheral.advertisement.manufacturerData;
-    if (mfgData && mfgData.length >= 18) {
-      return `mfg:${mfgData.subarray(12, 18).toString("hex").toUpperCase()}`;
-    }
-
-    return `uuid:${peripheral.uuid}`;
-  }
-
-  private static readonly PROBE_NEEDED = "PROBE_NEEDED";
-
-  /**
-   * Checks if the peripheral is suitable for connection.
-   * Returns the device MAC, "PROBE_NEEDED" if MAC must be determined after
-   * connecting (macOS fallback), or null if the device should be skipped.
-   */
-  private isSuitableDeviceAddress = async (
-    peripheral: noble.Peripheral,
-  ): Promise<string | null> => {
-    const deviceAddress = this.extractAddress(peripheral);
-    const peripheralId = this.getPeripheralIdentifier(
-      peripheral,
-      deviceAddress,
-    );
-
-    // Check blacklist first using fallback-safe identifier
-    if (this.isDeviceBlacklisted(peripheralId)) {
-      this.log.debug(`Skipping blacklisted peripheral: ${peripheralId}`);
-      return null;
-    }
-
-    if (deviceAddress) {
-      if (
-        !this.config.devices.find((x) => x.plejdDeviceId === deviceAddress)
-      ) {
-        this.blacklistDevice(deviceAddress, "not_found");
-        this.log.warn(`Device ${deviceAddress} not found in known devices`);
-        return null;
-      }
-    } else {
-      this.log.info(
-        `Cannot extract MAC from peripheral (uuid: ${peripheral.uuid}), will probe after connecting`,
-      );
-    }
-
-    if (peripheral.rssi < -90) {
-      const id = deviceAddress ?? peripheralId;
-      this.log.info(
-        `Skipping device with weak signal: ${id} (${peripheral.rssi} dB)`,
-      );
-      this.blacklistDevice(id, "weak_signal");
-      return null;
-    }
-
-    if (this.isConnecting) {
-      this.log.debug("Connection already in progress, skipping...");
-      return null;
-    }
-
-    const displayAddr = deviceAddress ?? "unknown (will probe)";
-    this.log.info(
-      `Discovered | ${peripheral.advertisement.localName} | addr: ${displayAddr} | Signal strength: ${this.mapRssiToQuality(peripheral.rssi)} (${peripheral.rssi} dB)`,
-    );
-
-    return deviceAddress ?? PlejdService.PROBE_NEEDED;
-  };
-
-  private connectToPeripheral = async (
-    peripheral: noble.Peripheral,
-    deviceAddress: string,
-  ) => {
-    let retryCount = 0;
-    const maxRetries = 3;
-
-    try {
-      while (retryCount <= maxRetries) {
-        try {
-          if (retryCount > 0) {
-            await delay(2000);
-            this.log.info(
-              `Attempting to reconnect (attempt ${retryCount}/${maxRetries})`,
-            );
-          }
-
-          await race(() => peripheral.connectAsync(), 10_000);
-          this.log.info(
-            `Connected to mesh | ${peripheral.advertisement.localName} (addr: ${deviceAddress})`,
-          );
-          this.deviceAddress = deviceAddress;
-
-          peripheral.once("disconnect", async () => {
-            this.log.info("Disconnected from mesh");
-            this.cleanup();
-            await delay(5000);
-            await this.tryStartScanning();
-          });
-
-          let characteristics: noble.Characteristic[];
-          try {
-            characteristics = await this.discoverCaracteristics(peripheral);
-          } catch (e) {
-            this.log.error(
-              "Failed to discover characteristics, disconnecting. Error:",
-              e,
-            );
-            await this.tryDisconnect(peripheral);
-            throw e;
-          }
-
-          await this.setupDevice(peripheral, characteristics);
-          return {}; // Success - exit the method
-        } catch (error) {
-          this.log.error(
-            `Connecting failed | ${peripheral.advertisement.localName} | addr: ${deviceAddress}) - err: ${error}`,
-          );
-          await this.tryDisconnect(peripheral);
-          retryCount++;
-        }
-      }
-
-      // All retries exhausted
-      this.log.error(
-        "Max reconnection attempts reached, will restart scan.",
-      );
-    } finally {
-      this.isConnecting = false;
-    }
-
-    // Restart scanning after isConnecting is cleared
-    await this.tryStartScanning();
-
-    return {};
-  };
-
-  private mapRssiToQuality(rssi: number): string {
-    if (rssi >= -30) {
-      return "Excellent (Very close proximity)";
-    } else if (rssi >= -67) {
-      return "Very Good";
-    } else if (rssi >= -70) {
-      return "Good";
-    } else if (rssi >= -80) {
-      return "Fair";
-    } else if (rssi >= -90) {
-      return "Weak";
-    } else {
-      return "Very Weak (Potential connection issues)";
-    }
-  }
-
-  private discoverCaracteristics = async (
-    peripheral: noble.Peripheral,
-  ): Promise<noble.Characteristic[]> => {
-    this.log.info("Discovering characteristics");
-    const services = [PlejdCharacteristics.Service];
-    const characteristicIds = [
-      PlejdCharacteristics.Data,
-      PlejdCharacteristics.LastData,
-      PlejdCharacteristics.Auth,
-      PlejdCharacteristics.Ping,
-    ];
-
-    const { characteristics } =
-      await peripheral.discoverSomeServicesAndCharacteristicsAsync(
-        services,
-        characteristicIds,
-      );
-    this.log.info("Characteristics discovered");
-    return characteristics;
-  };
-
-  private setupDevice = async (
-    peripheral: noble.Peripheral,
-    characteristics: noble.Characteristic[],
-  ) => {
-    this.log.info("Locating relevant characteristics");
-    const authChar = characteristics.find(
-      (char) => char.uuid === PlejdCharacteristics.Auth,
-    );
-    const lastDataChar = characteristics.find(
-      (char) => char.uuid === PlejdCharacteristics.LastData,
-    );
-    const pingChar = characteristics.find(
-      (char) => char.uuid === PlejdCharacteristics.Ping,
-    );
-    const dataChar =
-      peripheral?.services[0]?.characteristics?.find(
-        (char) => char.uuid === PlejdCharacteristics.Data,
-      ) ?? null;
-
-    if (!authChar || !lastDataChar || !pingChar || !dataChar) {
-      this.log.error(
-        "Unable to extract characteristic during discovery",
-        authChar,
-        lastDataChar,
-        pingChar,
-      );
-      await this.tryDisconnect(peripheral);
-      return;
-    }
-
-    await this.authenticate(peripheral, authChar);
-    await this.setupCommunication(peripheral, pingChar, lastDataChar, dataChar);
-  };
-
-  private startQueueProcessor = (
-    dataChar: noble.Characteristic,
-    addressBuffer: Buffer,
-  ) => {
-    this.stopQueueProcessor();
-
-    const processQueue = async () => {
-      const payload = this.sendQueue.pop();
-      if (!payload) return;
-
-      const data = plejdEncodeDecode(
-        this.config.cryptoKey,
-        addressBuffer,
-        payload,
-      );
-      this.log.info(
-        `BLE command sent to ${addressBuffer?.toString("hex") ?? "Unknown"} | ${data.length} bytes | ${data.toString("hex")}`,
-      );
-
-      try {
-        await withRetry(() => race(() => dataChar.writeAsync(data, false)), {
-          maxRetries: 3,
-          delayMs: PLEJD_WRITE_TIMEOUT,
-        });
-      } catch (error) {
-        this.sendQueue.unshift(payload);
-        this.log.error("Failed to send data to device, will retry: ", error);
-      }
-    };
-
-    this.queueTimeout = setInterval(processQueue, PLEJD_WRITE_TIMEOUT);
-  };
-
-  private stopQueueProcessor = () => {
-    if (this.queueTimeout) {
-      clearInterval(this.queueTimeout);
-      this.queueTimeout = null;
-    }
-  };
-
-  private startPlejdPing = (
-    peripheral: noble.Peripheral,
-    pingChar: noble.Characteristic,
-  ) => {
-    this.stopPlejdPing();
-
-    const performPing = async () => {
-      if (!pingChar) return;
-
-      try {
-        const ping = randomBytes(1);
-        await race(() => pingChar.writeAsync(ping, false));
-        const pong = await race(() => pingChar.readAsync());
-
-        if (((ping[0] + 1) & 0xff) !== pong[0]) {
-          this.log.error(
-            "Ping pong communication failed, missing pong response",
-          );
-          this.deviceState.consecutivePingFailures++;
-        } else {
-          this.deviceState.lastPingSuccess = Date.now();
-          this.deviceState.consecutivePingFailures = 0;
-        }
-      } catch (error) {
-        this.deviceState.consecutivePingFailures++;
-        this.log.warn("Ping failed: ", error);
-      }
-
-      if (
-        this.deviceAddress &&
-        this.deviceAddress !== PlejdService.PROBE_NEEDED &&
-        this.deviceState.consecutivePingFailures >= 3
-      ) {
-        this.log.warn("Ping failed 3 times, reconnecting to mesh");
-        this.blacklistDevice(this.deviceAddress, "Ping failed 3 times");
-        this.stopPlejdPing();
-        await this.tryDisconnect(peripheral);
-      }
-    };
-
-    this.plejdTimeout = setInterval(performPing, PLEJD_PING_TIMEOUT);
-  };
-
-  private stopPlejdPing = () => {
-    if (this.plejdTimeout) {
-      clearInterval(this.plejdTimeout);
-      this.plejdTimeout = null;
-    }
-  };
+  // --- Notification handling --- \\
 
   private handleNotification = async (
     data: Buffer,
     isNotification: boolean,
     addressBuffer: Buffer,
   ) => {
-    const MIN_PAYLOAD_LENGTH = 5; // 1 byte id + 2 bytes padding + 2 bytes command
     if (data.length < MIN_PAYLOAD_LENGTH) {
       this.log.warn(
         `Received malformed notification: expected at least ${MIN_PAYLOAD_LENGTH} bytes, got ${data.length}`,
@@ -655,252 +796,7 @@ export class PlejdService {
     }
   };
 
-  private setupCommunication = async (
-    peripheral: noble.Peripheral,
-    pingChar: noble.Characteristic,
-    lastDataChar: noble.Characteristic,
-    dataChar: noble.Characteristic,
-  ) => {
-    if (!this.deviceAddress) {
-      this.log.error("Device address not set");
-      return;
-    }
-
-    try {
-      this.log.info("Subscribing to incoming messages");
-      await race(() => lastDataChar.subscribeAsync());
-
-      // On macOS: probe for the correct device MAC via mesh notifications
-      if (this.deviceAddress === PlejdService.PROBE_NEEDED) {
-        this.log.info(
-          "Probing for device MAC address via mesh notifications...",
-        );
-        const probedAddress = await this.probeDeviceAddress(lastDataChar);
-        if (!probedAddress) {
-          this.log.error(
-            "Failed to determine device MAC address — no identifiable mesh traffic within timeout",
-          );
-          await this.tryDisconnect(peripheral);
-          return;
-        }
-        this.deviceAddress = probedAddress;
-        this.log.info(`Device identified as ${probedAddress}`);
-      }
-
-      // Start ping only after MAC is resolved
-      this.log.info("Setting up ping pong communication with Plejd device");
-      this.startPlejdPing(peripheral, pingChar);
-
-      const addressBuffer = Buffer.from(
-        this.deviceAddress.replace(/:/g, ""),
-        "hex",
-      ).reverse();
-
-      this.log.debug("Starting queue handler for messages to Plejd device");
-      this.startQueueProcessor(dataChar, addressBuffer);
-
-      lastDataChar.on("data", async (data, isNotification) => {
-        await this.handleNotification(data, isNotification, addressBuffer);
-      });
-    } catch (e) {
-      if (this.deviceAddress !== PlejdService.PROBE_NEEDED) {
-        this.blacklistDevice(
-          this.deviceAddress,
-          `Communication setup failed: ${e}`,
-        );
-      }
-      await this.tryDisconnect(peripheral);
-      this.log.error("Failed to subscribe to Plejd device", e);
-    }
-  };
-
-  /**
-   * Determines the connected device's MAC by listening for mesh notifications
-   * and trying to decode them with each known device's MAC.
-   * A valid decode (known command code) identifies the correct MAC.
-   */
-  private probeDeviceAddress(
-    lastDataChar: noble.Characteristic,
-  ): Promise<string | null> {
-    const knownCommands = new Set(Object.values(PlejdCommand));
-
-    return new Promise<string | null>((resolve) => {
-      const timeout = setTimeout(() => {
-        lastDataChar.removeAllListeners("data");
-        resolve(null);
-      }, 30_000);
-
-      const handler = (data: Buffer) => {
-        for (const device of this.config.devices) {
-          const addressBuffer = Buffer.from(
-            device.plejdDeviceId.replace(/:/g, ""),
-            "hex",
-          ).reverse();
-
-          const decoded = plejdEncodeDecode(
-            this.config.cryptoKey,
-            addressBuffer,
-            data,
-          );
-
-          if (decoded.length >= 5) {
-            const command = decoded.toString("hex", 3, 5);
-            if (knownCommands.has(command as PlejdCommand)) {
-              clearTimeout(timeout);
-              lastDataChar.removeAllListeners("data");
-              resolve(device.plejdDeviceId);
-              return;
-            }
-          }
-        }
-      };
-
-      lastDataChar.on("data", handler);
-    });
-  }
-
-  private authenticate = async (
-    peripheral: noble.Peripheral,
-    authChar: noble.Characteristic,
-  ) => {
-    if (this.isAuthenticated || !this.deviceAddress) {
-      return;
-    }
-
-    try {
-      this.log.info("Authenticating to Plejd device");
-      await race(() => authChar.writeAsync(Buffer.from([0x00]), false));
-      await delay(100);
-      const data = await race(() => authChar.readAsync());
-      await delay(100);
-      await race(() =>
-        authChar.writeAsync(plejdCharResp(this.config.cryptoKey, data), false),
-      );
-      await delay(100);
-      this.log.info("Authentication successful");
-      this.isAuthenticated = true;
-    } catch (e) {
-      this.isAuthenticated = false;
-      if (
-        this.deviceAddress &&
-        this.deviceAddress !== PlejdService.PROBE_NEEDED
-      ) {
-        this.blacklistDevice(this.deviceAddress, `Authentication failed: ${e}`);
-      }
-      await this.tryDisconnect(peripheral);
-      this.log.error("Failed to authenticate to Plejd device", e);
-    }
-  };
-
-  private tryStartScanning = async () => {
-    if (this.isScanning) {
-      this.log.debug("Scanning already in progress, skipping...");
-      return;
-    }
-    this.isScanning = true;
-
-    this.cleanup();
-    await noble.stopScanningAsync();
-    try {
-      if (noble._state === "poweredOn") {
-        this.cleanupBlacklist();
-        this.log.info("Scanning for Plejd devices");
-        await delay(5000);
-        await race(
-          () => noble.startScanningAsync([PlejdCharacteristics.Service], false),
-          10_000,
-        );
-
-        this.resetDiscoverTimeout();
-
-        this.discoverHandler = async (peripheral: noble.Peripheral) => {
-          const r = await this.isSuitableDeviceAddress(peripheral);
-          if (r) {
-            this.isConnecting = true; // Set synchronously to prevent race with second peripheral
-            this.stopDiscoverTimeout();
-            this.removeDiscoverHandler();
-            await noble.stopScanningAsync();
-            await this.connectToPeripheral(peripheral, r);
-          }
-          // If no value, continue listening for more peripherals
-        };
-        noble.on("discover", this.discoverHandler);
-      }
-    } catch (e) {
-      this.log.error("Failed to start scanning for Plejd devices", e);
-      await delay(10000);
-      await this.tryStartScanning();
-    } finally {
-      this.isScanning = false;
-    }
-  };
-
-  private tryDisconnect = async (peripheral: noble.Peripheral) => {
-    try {
-      await peripheral.disconnectAsync();
-    } catch (e) {
-      this.log.debug("Failed to disconnect from previous peripheral", e);
-    }
-  };
-
-  private isDeviceBlacklisted(address: string): boolean {
-    const blacklistEntry = this.deviceBlacklist.get(address);
-    if (!blacklistEntry) return false;
-
-    if (Date.now() > blacklistEntry.until) {
-      this.deviceBlacklist.delete(address);
-      return false;
-    }
-
-    return true;
-  }
-
-  private blacklistDevice(address: string, reason: string) {
-    const entry = this.deviceBlacklist.get(address) ?? {
-      until: 0,
-      attempts: 0,
-    };
-    entry.attempts++;
-
-    const baseTime =
-      entry.attempts >= this.MAX_FAILURES
-        ? this.EXTENDED_BLACKLIST_DURATION
-        : this.BLACKLIST_DURATION;
-
-    const duration = Math.min(
-      baseTime * Math.pow(2, entry.attempts - 1),
-      24 * 60 * 60 * 1000, // Max 24 hours
-    );
-
-    entry.until = Date.now() + duration;
-    this.deviceBlacklist.set(address, entry);
-
-    this.log.warn(
-      `Device ${address} blacklisted for ${duration / 1000} seconds. Reason: ${reason}. Failure attempts: ${entry.attempts}`,
-    );
-  }
-
-  private cleanupBlacklist() {
-    const now = Date.now();
-    for (const [address, entry] of this.deviceBlacklist.entries()) {
-      if (now > entry.until) {
-        this.deviceBlacklist.delete(address);
-      }
-    }
-  }
-
-  private startBlacklistCleanup() {
-    if (this.blacklistCleanupInterval) {
-      clearInterval(this.blacklistCleanupInterval);
-    }
-
-    this.blacklistCleanupInterval = setInterval(
-      () => {
-        this.cleanupBlacklist();
-      },
-      5 * 60 * 1000,
-    ); // Clean every 5 minutes
-  }
+  // --- Helpers --- \\
 
   private removeDiscoverHandler() {
     if (this.discoverHandler) {
@@ -909,38 +805,11 @@ export class PlejdService {
     }
   }
 
-  private cleanup() {
-    this.stopPlejdPing();
-    this.stopQueueProcessor();
-    this.removeDiscoverHandler();
-    this.stopDiscoverTimeout();
-    this.sendQueue = [];
-    this.isConnecting = false;
-    this.isScanning = false;
-    this.isAuthenticated = false;
-    this.deviceState = {
-      lastPingSuccess: Date.now(),
-      consecutivePingFailures: 0,
-    };
-    this.deviceAddress = null;
-  }
-
-  private stopDiscoverTimeout() {
-    if (this.discoverTimeout) {
-      clearTimeout(this.discoverTimeout);
-      this.discoverTimeout = null;
+  private async tryDisconnect(peripheral: noble.Peripheral) {
+    try {
+      await peripheral.disconnectAsync();
+    } catch {
+      // Ignore — may already be disconnected
     }
-  }
-
-  private resetDiscoverTimeout() {
-    this.stopDiscoverTimeout();
-    this.discoverTimeout = setTimeout(async () => {
-      if (!this.isAuthenticated) {
-        this.log.warn("No device found during scan, restarting scan");
-        this.removeDiscoverHandler();
-        await noble.stopScanningAsync();
-        await this.tryStartScanning();
-      }
-    }, 30_000);
   }
 }
