@@ -547,7 +547,6 @@ export class PlejdService {
         this.blacklistDevice(this.deviceAddress, "Ping failed 3 times");
         this.stopPlejdPing();
         await this.tryDisconnect(peripheral);
-        await this.tryStartScanning();
       }
     };
 
@@ -685,7 +684,6 @@ export class PlejdService {
             "Failed to determine device MAC address — no identifiable mesh traffic within timeout",
           );
           await this.tryDisconnect(peripheral);
-          await this.tryStartScanning();
           return;
         }
         this.deviceAddress = probedAddress;
@@ -817,6 +815,7 @@ export class PlejdService {
           if (r) {
             this.stopDiscoverTimeout();
             this.removeDiscoverHandler();
+            await noble.stopScanningAsync();
             await this.connectToPeripheral(peripheral, r);
           }
           // If no value, continue listening for more peripherals
