@@ -56,6 +56,7 @@ export class PlejdService {
     null;
   private loopGeneration = 0;
   private failedDevices: Map<string, number> = new Map(); // MAC → cooldown expiry
+  private connectedSince: number | null = null;
 
   private static readonly PROBE_NEEDED = "PROBE_NEEDED";
 
@@ -170,9 +171,23 @@ export class PlejdService {
       if (state === "poweredOn") {
         this.runLoop();
       } else if (state === "poweredOff") {
-        this.log.info("Bluetooth powered off, cleaning up connections");
+        const uptime = this.formatUptime();
+        this.log.info(
+          `Bluetooth powered off${uptime}, cleaning up connections`,
+        );
+        this.connectedSince = null;
         this.cancelLoop();
       }
+    });
+
+    noble.on("warning", (message: string) => {
+      this.log.warn(`Noble warning: ${message}`);
+    });
+    noble.on("scanStart", () => {
+      this.log.debug("Noble: scan started");
+    });
+    noble.on("scanStop", () => {
+      this.log.debug("Noble: scan stopped");
     });
   };
 
@@ -510,9 +525,13 @@ export class PlejdService {
         return;
       }
 
+      this.connectedSince = Date.now();
+
       // Handle disconnect
       peripheral.once("disconnect", () => {
-        this.log.info("Disconnected from mesh");
+        const uptime = this.formatUptime();
+        this.connectedSince = null;
+        this.log.info(`Disconnected from mesh${uptime}`);
         this.stopPing();
         this.stopQueue();
         reject(new Error("Peripheral disconnected"));
@@ -579,11 +598,18 @@ export class PlejdService {
       }
     };
 
-    this.pingInterval = setInterval(performPing, PLEJD_PING_TIMEOUT);
+    this.log.debug(
+      `Delaying first ping by ${PLEJD_PING_TIMEOUT}ms to let connection stabilize`,
+    );
+    this.pingInterval = setTimeout(() => {
+      performPing();
+      this.pingInterval = setInterval(performPing, PLEJD_PING_TIMEOUT);
+    }, PLEJD_PING_TIMEOUT);
   }
 
   private stopPing() {
     if (this.pingInterval) {
+      clearTimeout(this.pingInterval);
       clearInterval(this.pingInterval);
       this.pingInterval = null;
     }
@@ -803,6 +829,12 @@ export class PlejdService {
       noble.removeListener("discover", this.discoverHandler);
       this.discoverHandler = null;
     }
+  }
+
+  private formatUptime(): string {
+    if (this.connectedSince === null) return "";
+    const seconds = Math.round((Date.now() - this.connectedSince) / 1000);
+    return ` (connection was up for ${seconds}s)`;
   }
 
   private async tryDisconnect(peripheral: noble.Peripheral) {
