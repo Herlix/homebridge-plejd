@@ -45,7 +45,8 @@ export enum PlejdCommand {
   RequestResponse = "0102",
   RequestNoResponse = "0110",
   RequestReadValue = "0103",
-  ButtonClick = "0006",
+  EventPrepare = "0015",
+  EventFired = "0016",
 }
 
 export class PlejdService {
@@ -67,6 +68,11 @@ export class PlejdService {
       identifier: number,
       isOn: boolean,
       dim?: number,
+    ) => void,
+    private readonly onButtonEvent?: (
+      deviceAddress: number,
+      buttonIndex: number,
+      action: "press" | "release",
     ) => void,
   ) {}
 
@@ -554,6 +560,9 @@ export class PlejdService {
         await this.handleNotification(data, isNotification, addressBuffer);
       });
 
+      // Enable button event reporting
+      this.sendEventPrepare();
+
       this.log.info("Connection fully established — running");
     });
   }
@@ -723,6 +732,19 @@ export class PlejdService {
     return null;
   }
 
+  // --- Button event reporting --- \\
+
+  /**
+   * Sends CMD_EVENT_PREPARE to enable (or re-arm) button event reporting.
+   * Must be sent once after connection and again after each CMD_EVENT_FIRED.
+   */
+  private sendEventPrepare() {
+    const payload =
+      "00" + PlejdCommand.RequestNoResponse + PlejdCommand.EventPrepare;
+    this.log.debug("BLE: Sending CMD_EVENT_PREPARE");
+    this.sendQueue.unshift(Buffer.from(payload, "hex"));
+  }
+
   // --- Notification handling --- \\
 
   private handleNotification = async (
@@ -802,9 +824,30 @@ export class PlejdService {
         this.onUpdate(id, isOn, converted);
         break;
       }
+      case PlejdCommand.EventFired: {
+        const deviceAddr = decodedData.length > 5 ? decodedData[5] : id;
+        const buttonIndex = decodedData.length > 6 ? decodedData[6] : 0;
+        const action: "press" | "release" =
+          decodedData.length > 7 && decodedData[7] === 0x00
+            ? "release"
+            : "press";
+
+        this.log.info(
+          `BUTTON EVENT | device=${deviceAddr} button=${buttonIndex} action=${action} | ${decodedData.toString("hex")}`,
+        );
+
+        this.onButtonEvent?.(deviceAddr, buttonIndex, action);
+
+        // Re-arm button event reporting
+        this.sendEventPrepare();
+        break;
+      }
+      case PlejdCommand.EventPrepare: {
+        // Echo of our own CMD_EVENT_PREPARE — ignore
+        break;
+      }
       case PlejdCommand.Scene:
       case PlejdCommand.OnOffState:
-      case PlejdCommand.ButtonClick:
       case PlejdCommand.RequestResponse:
       case PlejdCommand.RequestNoResponse:
       case PlejdCommand.RequestReadValue: {

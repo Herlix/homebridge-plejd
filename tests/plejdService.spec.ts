@@ -10,6 +10,7 @@ describe("PlejdService updateState", () => {
       {
         devices: [],
         scenes: [],
+        buttons: [],
         cryptoKey: Buffer.from("FooBar", "utf8"),
       },
       Logger.withPrefix("PlejdServiceTests"),

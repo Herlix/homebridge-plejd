@@ -27,3 +27,7 @@ export const AUTH_STEP_DELAY = 100;
 
 // Probing
 export const PROBE_TIMEOUT = 30000;
+
+// Button press detection
+export const LONG_PRESS_THRESHOLD_MS = 500;
+export const DOUBLE_PRESS_WINDOW_MS = 400;
