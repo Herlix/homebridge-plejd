@@ -1,3 +1,7 @@
+#### 1.10.0 (2026-03-02)
+
+Add buttons with events
+
 #### 1.9.0 (2026-03-02)
 
 Add buttons with events
