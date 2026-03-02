@@ -1,3 +1,7 @@
+#### 1.8.1 (2026-03-3)
+
+Add support for WMS-01 motion detection
+
 #### 1.8.0 (2026-02-27)
 
 Complete rewrite and simplification of BLE logic to make it more stable after the latest releases.
