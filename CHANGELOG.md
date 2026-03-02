@@ -1,3 +1,7 @@
+#### 1.13.0 (2026-03-02)
+
+Add buttons to name of expanded buttons
+
 #### 1.12.0 (2026-03-02)
 
 Add posibility to exapnd buttons for home assistant
