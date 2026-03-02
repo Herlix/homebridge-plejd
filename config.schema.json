@@ -78,7 +78,7 @@
                 "type": "string",
                 "placeholder": "Kitchen Button"
             },
-            "description": "Button names to hide from HomeKit. Names are logged at startup."
+            "description": "Button names to hide from HomeKit. Hiding any button hides the entire device's button group. Names are logged at startup."
         },
         "devices": {
             "type": "array",

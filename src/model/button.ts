@@ -6,5 +6,4 @@ export interface Button {
   model: string;
   uuid: string;
   room?: string;
-  hidden: boolean;
 }
