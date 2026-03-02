@@ -4,8 +4,6 @@ import { Device } from "./model/device.js";
 import { PlejdHbPlatform } from "./PlejdHbPlatform.js";
 import { PLATFORM_NAME } from "./constants.js";
 
-const MOTION_RESET_MS = 75_000;
-
 interface DeviceState {
   isOn: boolean;
   brightness: number;
@@ -27,6 +25,7 @@ export class PlejdHbAccessory {
     private readonly accessory: PlatformAccessory,
     public readonly device: Device,
     private readonly transitionMs: number,
+    private readonly motionResetMs: number,
   ) {
     this.state = {
       brightness: accessory.context.brightness ?? 100,
@@ -121,34 +120,43 @@ export class PlejdHbAccessory {
   }
 
   onPlejdUpdates = (isOn: boolean, brightness?: number) => {
-    this.platform.log.debug(
-      `Updating Homekit state from ${this.device.name}: on=${isOn}, brightness=${brightness?.toFixed(1)}%`,
-    );
-
     if (this.device.outputType === "SENSOR") {
       this.state.isOn = true;
       this.service
         .getCharacteristic(this.platform.Characteristic.MotionDetected)
         .updateValue(true);
 
-      // Auto-reset motion after timeout (sensor only fires "detected", not "cleared")
-      if (this.motionResetTimer) {
-        clearTimeout(this.motionResetTimer);
-      }
-      this.motionResetTimer = setTimeout(() => {
-        this.state.isOn = false;
-        this.service
-          .getCharacteristic(this.platform.Characteristic.MotionDetected)
-          .updateValue(false);
-        this.platform.log.debug(
-          `Motion auto-reset for ${this.device.name}`,
+      // Only start the auto-reset timer if one isn't already running.
+      // The sensor broadcasts every ~30s while motion is active;
+      // resetting the 75s timer each time would prevent it from ever firing.
+      if (!this.motionResetTimer) {
+        this.platform.log.info(
+          `Motion detected from ${this.device.name}, will auto-reset in ${this.motionResetMs / 1000}s`,
         );
-        this.accessory.context = this.state;
-      }, MOTION_RESET_MS);
+        this.motionResetTimer = setTimeout(() => {
+          this.motionResetTimer = undefined;
+          this.state.isOn = false;
+          this.service
+            .getCharacteristic(this.platform.Characteristic.MotionDetected)
+            .updateValue(false);
+          this.platform.log.info(
+            `Motion auto-reset for ${this.device.name}`,
+          );
+          this.accessory.context = this.state;
+        }, this.motionResetMs);
+      } else {
+        this.platform.log.debug(
+          `Motion sustained for ${this.device.name} (timer already running)`,
+        );
+      }
 
       this.accessory.context = this.state;
       return;
     }
+
+    this.platform.log.debug(
+      `Updating Homekit state from ${this.device.name}: on=${isOn}, brightness=${brightness?.toFixed(1)}%`,
+    );
 
     this.state.isOn = isOn;
 

@@ -10,6 +10,7 @@ import {
 
 import {
   DEFAULT_BRIGHTNESS_TRANSITION_MS,
+  DEFAULT_MOTION_RESET_SEC,
   PLATFORM_NAME,
   PLUGIN_NAME,
 } from "./constants.js";
@@ -35,6 +36,7 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
   public readonly plejdHbAccessories: PlejdHbAccessory[] = [];
   public readonly plejdHbSceneAccessories: PlejdHbSceneAccessory[] = [];
   private readonly transitionMs: number;
+  private readonly motionResetMs: number;
 
   constructor(
     public readonly log: Logger,
@@ -47,6 +49,8 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
 
     this.transitionMs =
       config.transition_ms ?? DEFAULT_BRIGHTNESS_TRANSITION_MS;
+    this.motionResetMs =
+      (config.motion_reset_seconds ?? DEFAULT_MOTION_RESET_SEC) * 1000;
   }
 
   configurePlejd = async () => {
@@ -259,6 +263,7 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
             existingAccessory,
             device,
             this.transitionMs,
+            this.motionResetMs,
           ),
         );
       } else {
@@ -315,7 +320,7 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
     accessory.context.device = device;
     // See above.
     this.plejdHbAccessories.push(
-      new PlejdHbAccessory(this, accessory, device, this.transitionMs),
+      new PlejdHbAccessory(this, accessory, device, this.transitionMs, this.motionResetMs),
     );
 
     // link the accessory to your platform
@@ -367,10 +372,8 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
             .updateValue(brightness);
         }
       } else if (device.outputType === "SENSOR") {
-        existingAccessory
-          .getService(this.Service.MotionSensor)
-          ?.getCharacteristic(this.Characteristic.MotionDetected)
-          ?.updateValue(isOn);
+        // Sensor state is handled entirely by PlejdHbAccessory.onPlejdUpdates
+        // which always sets MotionDetected=true with an auto-reset timer.
       } else {
         existingAccessory
           .getService(this.Service.Switch)
