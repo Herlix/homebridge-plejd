@@ -40,7 +40,7 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
 
   public readonly plejdHbAccessories: PlejdHbAccessory[] = [];
   public readonly plejdHbSceneAccessories: PlejdHbSceneAccessory[] = [];
-  public plejdHbRemoteAccessory?: PlejdHbButtonAccessory;
+  public readonly plejdHbButtonAccessories: PlejdHbButtonAccessory[] = [];
   private buttonPressDetector?: ButtonPressDetector;
   private readonly transitionMs: number;
   private readonly motionResetMs: number;
@@ -313,20 +313,30 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
     const deviceUuids = this.userInputConfig!.devices.map((x) => x.uuid);
     const sceneUuids = this.userInputConfig!.scenes.map((x) => x.uuid);
     const buttons = this.userInputConfig!.buttons;
-    const buttonUuids = buttons.length > 0
-      ? [this.generateId("plejd-remote")]
-      : [];
+    const buttonUuids = this.config.expand_buttons
+      ? buttons.map((b) => b.uuid)
+      : buttons.length > 0 ? [this.generateId("plejd-remote")] : [];
     const allUuids = [...deviceUuids, ...sceneUuids, ...buttonUuids];
 
     const notRegistered = this.accessories.filter(
       (ac) => !allUuids.includes(ac.UUID),
     );
     if (notRegistered.length > 0) {
+      const names = notRegistered.map((ac) => ac.displayName).join(", ");
+      this.log.info(
+        `Removing ${notRegistered.length} stale accessor${notRegistered.length === 1 ? "y" : "ies"}: ${names}`,
+      );
       this.homebridgeApi.unregisterPlatformAccessories(
         PLUGIN_NAME,
         PLATFORM_NAME,
         notRegistered,
       );
+      const staleUuids = new Set(notRegistered.map((ac) => ac.UUID));
+      for (let i = this.accessories.length - 1; i >= 0; i--) {
+        if (staleUuids.has(this.accessories[i].UUID)) {
+          this.accessories.splice(i, 1);
+        }
+      }
     }
 
     for (const device of this.userInputConfig!.devices) {
@@ -506,6 +516,49 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
       (a, b) => a.deviceAddress - b.deviceAddress || a.buttonIndex - b.buttonIndex,
     );
 
+    if (this.config.expand_buttons) {
+      this.discoverButtonsExpanded(buttons);
+    } else {
+      this.discoverButtonsGrouped(buttons);
+    }
+  };
+
+  private discoverButtonsExpanded = (buttons: Button[]) => {
+    for (const button of buttons) {
+      const existingAccessory = this.accessories.find(
+        (accessory) => accessory.UUID === button.uuid,
+      );
+
+      if (existingAccessory) {
+        existingAccessory.context.button = button;
+        existingAccessory.displayName = button.name;
+        this.homebridgeApi.updatePlatformAccessories([existingAccessory]);
+        this.plejdHbButtonAccessories.push(
+          PlejdHbButtonAccessory.createExpanded(this, existingAccessory, button),
+        );
+      } else {
+        const accessory = new this.homebridgeApi.platformAccessory(
+          button.name,
+          button.uuid,
+        );
+        accessory.context.button = button;
+
+        this.plejdHbButtonAccessories.push(
+          PlejdHbButtonAccessory.createExpanded(this, accessory, button),
+        );
+
+        this.homebridgeApi.registerPlatformAccessories(
+          PLUGIN_NAME, PLATFORM_NAME, [accessory],
+        );
+
+        if (!this.accessories.find((x) => x.UUID === button.uuid)) {
+          this.accessories.push(accessory);
+        }
+      }
+    }
+  };
+
+  private discoverButtonsGrouped = (buttons: Button[]) => {
     const uuid = this.generateId("plejd-remote");
     const name = "Plejd Remote";
 
@@ -517,15 +570,15 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
       existingAccessory.context.buttons = buttons;
       existingAccessory.displayName = name;
       this.homebridgeApi.updatePlatformAccessories([existingAccessory]);
-      this.plejdHbRemoteAccessory = new PlejdHbButtonAccessory(
-        this, existingAccessory, buttons,
+      this.plejdHbButtonAccessories.push(
+        PlejdHbButtonAccessory.createGrouped(this, existingAccessory, buttons),
       );
     } else {
       const accessory = new this.homebridgeApi.platformAccessory(name, uuid);
       accessory.context.buttons = buttons;
 
-      this.plejdHbRemoteAccessory = new PlejdHbButtonAccessory(
-        this, accessory, buttons,
+      this.plejdHbButtonAccessories.push(
+        PlejdHbButtonAccessory.createGrouped(this, accessory, buttons),
       );
 
       this.homebridgeApi.registerPlatformAccessories(
@@ -558,11 +611,33 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
       `Button press detected: device=${deviceAddress} button=${buttonIndex} type=${pressType}`,
     );
 
-    if (this.plejdHbRemoteAccessory) {
-      this.plejdHbRemoteAccessory.firePressEvent(deviceAddress, buttonIndex, pressType);
-    } else {
+    if (this.plejdHbButtonAccessories.length === 0) {
       this.log.debug(
-        `No remote accessory registered for device=${deviceAddress} button=${buttonIndex}`,
+        `No button accessory registered for device=${deviceAddress} button=${buttonIndex}`,
+      );
+      return;
+    }
+
+    if (this.config.expand_buttons) {
+      // Expanded mode: find the specific accessory for this button
+      const acc = this.plejdHbButtonAccessories.find(
+        (a) =>
+          a.button?.deviceAddress === deviceAddress &&
+          a.button?.buttonIndex === buttonIndex,
+      );
+      if (acc) {
+        acc.firePressEvent(deviceAddress, buttonIndex, pressType);
+      } else {
+        this.log.debug(
+          `No expanded button accessory for device=${deviceAddress} button=${buttonIndex}`,
+        );
+      }
+    } else {
+      // Grouped mode: fire on the single grouped accessory
+      this.plejdHbButtonAccessories[0].firePressEvent(
+        deviceAddress,
+        buttonIndex,
+        pressType,
       );
     }
   };

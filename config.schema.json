@@ -54,6 +54,13 @@
             "required": false,
             "description": "Expose Plejd buttons as HomeKit accessories (single/double/long press). Disable to hide all buttons."
         },
+        "expand_buttons": {
+            "title": "Expand Buttons",
+            "type": "boolean",
+            "default": false,
+            "required": false,
+            "description": "Create individual accessories per button instead of grouping into a single Plejd Remote. Recommended for Home Assistant users"
+        },
         "double_press_window_ms": {
             "title": "Double Press Window (ms)",
             "type": "number",

@@ -32,7 +32,8 @@ export class PlejdHbSceneAccessory {
       .setCharacteristic(
         this.platform.Characteristic.SerialNumber,
         `scene-${this.scene.sceneIndex}`,
-      );
+      )
+      .setCharacteristic(this.platform.Characteristic.Name, this.scene.name);
 
     // Use Switch service for scenes
     this.service =

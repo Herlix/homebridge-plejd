@@ -44,7 +44,8 @@ export class PlejdHbAccessory {
       .setCharacteristic(
         this.platform.Characteristic.SerialNumber,
         this.device.identifier ? this.device.identifier.toString() : this.device.uuid,
-      );
+      )
+      .setCharacteristic(this.platform.Characteristic.Name, this.device.name);
 
     if (this.device.outputType === "SENSOR") {
       // Remove stale services from previous type assignments
