@@ -212,8 +212,6 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
           : undefined;
 
         const model = plejdDevice?.firmware.notes ?? "Unknown";
-        const deviceName =
-          controlledDevice?.name ?? siteDevice?.title ?? input.deviceId;
 
         const name = controlledDevice?.name
           ?? `${siteDevice?.title ?? input.deviceId} Button ${input.input + 1}`;
