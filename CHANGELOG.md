@@ -1,3 +1,7 @@
+#### 1.12.0 (2026-03-02)
+
+Add posibility to exapnd buttons for home assistant
+
 #### 1.11.1 (2026-03-02)
 
 Filter invalid devices
