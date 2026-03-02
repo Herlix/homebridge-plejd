@@ -30,3 +30,7 @@ export const PROBE_TIMEOUT = 30000;
 
 // Sensor
 export const DEFAULT_MOTION_RESET_SEC = 75;
+
+// Button press detection (defaults, configurable via settings)
+export const DEFAULT_DOUBLE_PRESS_WINDOW_MS = 200;
+export const DEFAULT_LONG_PRESS_THRESHOLD_MS = 1000;

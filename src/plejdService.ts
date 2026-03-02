@@ -47,6 +47,8 @@ export enum PlejdCommand {
   RequestReadValue = "0103",
   ButtonClick = "0006",
   OutputSet = "0420",
+  EventPrepare = "0015",
+  EventFired = "0016",
 }
 
 /**
@@ -106,6 +108,11 @@ export class PlejdService {
       identifier: number,
       isOn: boolean,
       dim?: number,
+    ) => void,
+    private readonly onButtonEvent?: (
+      deviceAddress: number,
+      buttonIndex: number,
+      action: "press" | "release",
     ) => void,
   ) {}
 
@@ -593,6 +600,9 @@ export class PlejdService {
         await this.handleNotification(data, isNotification, addressBuffer);
       });
 
+      // Enable button event reporting
+      this.sendEventPrepare();
+
       this.log.info("Connection fully established — running");
     });
   }
@@ -762,6 +772,19 @@ export class PlejdService {
     return null;
   }
 
+  // --- Button event reporting --- \\
+
+  /**
+   * Sends CMD_EVENT_PREPARE to enable (or re-arm) button event reporting.
+   * Must be sent once after connection and again after each CMD_EVENT_FIRED.
+   */
+  private sendEventPrepare() {
+    const payload =
+      "00" + PlejdCommand.RequestNoResponse + PlejdCommand.EventPrepare;
+    this.log.debug("BLE: Sending CMD_EVENT_PREPARE");
+    this.sendQueue.unshift(Buffer.from(payload, "hex"));
+  }
+
   // --- Notification handling --- \\
 
   private handleNotification = async (
@@ -859,6 +882,27 @@ export class PlejdService {
           this.log.debug(`Motion detected from device ${id}`);
           this.onUpdate(id, true);
         }
+        break;
+      }
+      case PlejdCommand.EventFired: {
+        const deviceAddr = decodedData.length > 5 ? decodedData[5] : id;
+        const buttonIndex = decodedData.length > 6 ? decodedData[6] : 0;
+        const actionByte = decodedData.length > 7 ? decodedData[7] : undefined;
+        const action: "press" | "release" =
+          actionByte === 0x00 ? "release" : "press";
+
+        this.log.debug(
+          `Button raw event | device=${deviceAddr} button=${buttonIndex} action=${action} | ${decodedData.toString("hex")}`,
+        );
+
+        this.onButtonEvent?.(deviceAddr, buttonIndex, action);
+
+        // Re-arm button event reporting
+        this.sendEventPrepare();
+        break;
+      }
+      case PlejdCommand.EventPrepare: {
+        // Echo of our own CMD_EVENT_PREPARE — ignore
         break;
       }
       case PlejdCommand.Scene:

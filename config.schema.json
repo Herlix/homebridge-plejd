@@ -47,6 +47,39 @@
             "placeholder": "75",
             "description": "How long after the last motion event before the sensor resets to 'no motion'. Default: 75 seconds."
         },
+        "show_buttons": {
+            "title": "Show Buttons",
+            "type": "boolean",
+            "default": true,
+            "required": false,
+            "description": "Expose Plejd buttons as HomeKit accessories (single/double/long press). Disable to hide all buttons."
+        },
+        "double_press_window_ms": {
+            "title": "Double Press Window (ms)",
+            "type": "number",
+            "default": 200,
+            "required": false,
+            "placeholder": "200",
+            "description": "Time window in milliseconds to detect a double press. Increase if double presses are missed."
+        },
+        "long_press_threshold_ms": {
+            "title": "Long Press Threshold (ms)",
+            "type": "number",
+            "default": 1000,
+            "required": false,
+            "placeholder": "1000",
+            "description": "How long a button must be held in milliseconds before it counts as a long press."
+        },
+        "hidden_buttons": {
+            "title": "Hidden Buttons",
+            "type": "array",
+            "items": {
+                "title": "Button Name",
+                "type": "string",
+                "placeholder": "Kitchen Button"
+            },
+            "description": "Button names to hide from HomeKit. Names are logged at startup."
+        },
         "devices": {
             "type": "array",
             "items": {

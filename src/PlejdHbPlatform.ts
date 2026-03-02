@@ -10,14 +10,19 @@ import {
 
 import {
   DEFAULT_BRIGHTNESS_TRANSITION_MS,
+  DEFAULT_DOUBLE_PRESS_WINDOW_MS,
+  DEFAULT_LONG_PRESS_THRESHOLD_MS,
   DEFAULT_MOTION_RESET_SEC,
   PLATFORM_NAME,
   PLUGIN_NAME,
 } from "./constants.js";
 import { PlejdHbAccessory } from "./PlejdHbAccessory.js";
 import { PlejdHbSceneAccessory } from "./PlejdHbSceneAccessory.js";
+import { PlejdHbButtonAccessory } from "./PlejdHbButtonAccessory.js";
+import { ButtonPressDetector, PressType } from "./ButtonPressDetector.js";
 import { UserInputConfig } from "./model/userInputConfig.js";
 import { Device } from "./model/device.js";
+import { Button } from "./model/button.js";
 import { Scene } from "./model/scene.js";
 import { PlejdService } from "./plejdService.js";
 import PlejdRemoteApi from "./plejdApi.js";
@@ -35,8 +40,12 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
 
   public readonly plejdHbAccessories: PlejdHbAccessory[] = [];
   public readonly plejdHbSceneAccessories: PlejdHbSceneAccessory[] = [];
+  public readonly plejdHbButtonAccessories: PlejdHbButtonAccessory[] = [];
+  private buttonPressDetector?: ButtonPressDetector;
   private readonly transitionMs: number;
   private readonly motionResetMs: number;
+  private readonly doublePressWindowMs: number;
+  private readonly longPressThresholdMs: number;
 
   constructor(
     public readonly log: Logger,
@@ -51,6 +60,10 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
       config.transition_ms ?? DEFAULT_BRIGHTNESS_TRANSITION_MS;
     this.motionResetMs =
       (config.motion_reset_seconds ?? DEFAULT_MOTION_RESET_SEC) * 1000;
+    this.doublePressWindowMs =
+      config.double_press_window_ms ?? DEFAULT_DOUBLE_PRESS_WINDOW_MS;
+    this.longPressThresholdMs =
+      config.long_press_threshold_ms ?? DEFAULT_LONG_PRESS_THRESHOLD_MS;
   }
 
   configurePlejd = async () => {
@@ -85,6 +98,7 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
   configureDevices = (log: Logger, config: PlatformConfig, site?: Site) => {
     const devices = (config.devices as Device[]) || [];
     const scenes: Scene[] = [];
+    const buttons: Button[] = [];
 
     if (site) {
       config.crypto_key = site.plejdMesh.cryptoKey;
@@ -165,6 +179,53 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
           `Found scene: ${scene.name} (index: ${scene.sceneIndex})`,
         );
       });
+
+      // Extract buttons from cloud data
+      site.inputSettings.forEach((input) => {
+        const deviceAddress = site.deviceAddress[input.deviceId];
+        if (deviceAddress === undefined) {
+          this.log.warn(
+            `Button input for device ${input.deviceId} has no mesh address, skipping`,
+          );
+          return;
+        }
+
+        const plejdDevice = site.plejdDevices.find(
+          (x) => x.deviceId === input.deviceId,
+        );
+        const siteDevice = site.devices.find(
+          (x) => x.deviceId === input.deviceId,
+        );
+        const room = siteDevice
+          ? site.rooms.find((x) => x.roomId === siteDevice.roomId)
+          : undefined;
+
+        const model = plejdDevice?.firmware.notes ?? "Unknown";
+        const deviceName = siteDevice?.title ?? input.deviceId;
+        const name =
+          input.input === 0
+            ? `${deviceName} Button`
+            : `${deviceName} Button ${input.input + 1}`;
+
+        const button: Button = {
+          name,
+          deviceId: input.deviceId,
+          deviceAddress,
+          buttonIndex: input.input,
+          model,
+          uuid: this.generateId(`button-${input.deviceId}-${input.input}`),
+          room: room?.title,
+          hidden: false,
+        };
+
+        const hiddenButtons = (config.hidden_buttons as string[]) || [];
+        button.hidden = hiddenButtons.includes(button.name);
+
+        buttons.push(button);
+        this.log.info(
+          `Found button: ${button.name} (device=${button.deviceAddress}, index=${button.buttonIndex})${button.hidden ? " [hidden]" : ""}`,
+        );
+      });
     }
 
     for (let i = 0; i < devices.length; i++) {
@@ -198,6 +259,7 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
           device.outputType === "SENSOR",
       ),
       scenes: scenes,
+      buttons: buttons,
       cryptoKey: cryptoKey,
     };
 
@@ -215,11 +277,18 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
       this.userInputConfig,
       log,
       this.onPlejdUpdates.bind(this),
+      this.onButtonEvent.bind(this),
     );
     this.plejdService.configureBLE();
 
     this.discoverDevices();
     this.discoverScenes();
+
+    if (config.show_buttons !== false) {
+      this.discoverButtons();
+    } else {
+      log.info("Buttons disabled via show_buttons config option");
+    }
   };
 
   /**
@@ -233,7 +302,8 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
   discoverDevices = () => {
     const deviceUuids = this.userInputConfig!.devices.map((x) => x.uuid);
     const sceneUuids = this.userInputConfig!.scenes.map((x) => x.uuid);
-    const allUuids = [...deviceUuids, ...sceneUuids];
+    const buttonUuids = this.userInputConfig!.buttons.map((x) => x.uuid);
+    const allUuids = [...deviceUuids, ...sceneUuids, ...buttonUuids];
 
     const notRegistered = this.accessories.filter(
       (ac) => !allUuids.includes(ac.UUID),
@@ -387,6 +457,89 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
         this.addNewDevice(device);
         this.onPlejdUpdates(identifier, isOn, brightness);
       }
+    }
+  };
+
+  discoverButtons = () => {
+    this.buttonPressDetector = new ButtonPressDetector(
+      this.onPressDetected.bind(this),
+      this.doublePressWindowMs,
+      this.longPressThresholdMs,
+      this.log,
+    );
+
+    for (const button of this.userInputConfig!.buttons) {
+      if (button.hidden) {
+        continue;
+      }
+
+      const existingAccessory = this.accessories.find(
+        (accessory) => accessory.UUID === button.uuid,
+      );
+
+      if (existingAccessory) {
+        existingAccessory.context.button = button;
+        this.plejdHbButtonAccessories.push(
+          new PlejdHbButtonAccessory(this, existingAccessory, button),
+        );
+      } else {
+        this.addNewButton(button);
+      }
+    }
+  };
+
+  addNewButton = (button: Button) => {
+    const accessory = new this.homebridgeApi.platformAccessory(
+      button.name,
+      button.uuid,
+    );
+    accessory.context.button = button;
+
+    this.plejdHbButtonAccessories.push(
+      new PlejdHbButtonAccessory(this, accessory, button),
+    );
+
+    this.homebridgeApi.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [
+      accessory,
+    ]);
+
+    if (!this.accessories.find((x) => x.UUID === button.uuid)) {
+      this.accessories.push(accessory);
+    }
+  };
+
+  onButtonEvent = (
+    deviceAddress: number,
+    buttonIndex: number,
+    action: "press" | "release",
+  ) => {
+    this.log.debug(
+      `Button event: device=${deviceAddress} button=${buttonIndex} action=${action}`,
+    );
+    this.buttonPressDetector?.handleEvent(deviceAddress, buttonIndex, action);
+  };
+
+  private onPressDetected = (
+    deviceAddress: number,
+    buttonIndex: number,
+    pressType: PressType,
+  ) => {
+    this.log.info(
+      `Button press detected: device=${deviceAddress} button=${buttonIndex} type=${pressType}`,
+    );
+
+    const buttonAccessory = this.plejdHbButtonAccessories.find(
+      (b) =>
+        b.button.deviceAddress === deviceAddress &&
+        b.button.buttonIndex === buttonIndex,
+    );
+
+    if (buttonAccessory) {
+      buttonAccessory.firePressEvent(pressType);
+    } else {
+      this.log.debug(
+        `No button accessory found for device=${deviceAddress} button=${buttonIndex}`,
+      );
     }
   };
 
