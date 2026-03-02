@@ -40,6 +40,13 @@
             "placeholder": "1000",
             "description": "Amount of milliseconds of transitioning brightness"
         },
+        "motion_reset_seconds": {
+            "title": "Motion Reset Timeout (seconds)",
+            "type": "number",
+            "required": false,
+            "placeholder": "75",
+            "description": "How long after the last motion event before the sensor resets to 'no motion'. Default: 75 seconds."
+        },
         "devices": {
             "type": "array",
             "items": {
@@ -57,7 +64,8 @@
                         "type": "string",
                         "oneOf": [
                             { "title": "Light (Dimmable)", "const": "Light" },
-                            { "title": "Relay (On/Off only)", "const": "Relay" }
+                            { "title": "Relay (On/Off only)", "const": "Relay" },
+                            { "title": "Sensor (Motion)", "const": "Sensor" }
                         ],
                         "required": true,
                         "description": "Light for dimmable devices, Relay for on/off switches"
@@ -84,7 +92,8 @@
                             "CCL-01",
                             "OUT-01",
                             "OUT-02",
-                            "LST-01"
+                            "LST-01",
+                            "WMS-01"
                         ],
                         "required": true
                     },

@@ -46,6 +46,45 @@ export enum PlejdCommand {
   RequestNoResponse = "0110",
   RequestReadValue = "0103",
   ButtonClick = "0006",
+  OutputSet = "0420",
+}
+
+/**
+ * MiniPackage types found in CMD_OUTPUT_SET (0420) payloads.
+ * Each mini-package has a header byte: FSSS TTTT where
+ *   F = flag (1 bit), S = size-1 (3 bits), T = type (4 bits)
+ */
+interface MiniPackage {
+  type: number;
+  flag: boolean;
+  payload: number[];
+}
+
+const MiniPackageType = {
+  Source: 0x03,
+  Lux: 0x06,
+  BatteryInfo: 0x16,
+} as const;
+
+const MotionSource = 0x03;
+
+function parseMiniPackages(data: Buffer, offset: number): MiniPackage[] {
+  const packages: MiniPackage[] = [];
+  let i = offset;
+  while (i < data.length) {
+    const header = data[i];
+    const type = header & 0x0f;
+    const size = ((header >> 4) & 0x07) + 1;
+    const flag = (header & 0x80) !== 0;
+    i++;
+
+    const payload: number[] = [];
+    for (let j = 0; j < size && i < data.length; j++, i++) {
+      payload.push(data[i]);
+    }
+    packages.push({ type, flag, payload });
+  }
+  return packages;
 }
 
 export class PlejdService {
@@ -755,7 +794,7 @@ export class PlejdService {
 
     const isOn =
       decodedData.length >= 6
-        ? parseInt(decodedData.toString("hex", 5, 6), 10) === 1
+        ? parseInt(decodedData.toString("hex", 5, 6), 16) === 1
         : false;
 
     const commandType =
@@ -802,6 +841,26 @@ export class PlejdService {
         this.onUpdate(id, isOn, converted);
         break;
       }
+      case PlejdCommand.OutputSet: {
+        const miniPackages = parseMiniPackages(decodedData, 5);
+        this.log.debug(
+          `OutputSet from device ${id}:`,
+          miniPackages.map((p) => ({
+            type: `0x${p.type.toString(16).padStart(2, "0")}`,
+            flag: p.flag,
+            payload: p.payload.map((b) => b.toString(16).padStart(2, "0")),
+          })),
+        );
+
+        const sourcePackage = miniPackages.find(
+          (p) => p.type === MiniPackageType.Source,
+        );
+        if (sourcePackage && sourcePackage.payload[0] === MotionSource) {
+          this.log.debug(`Motion detected from device ${id}`);
+          this.onUpdate(id, true);
+        }
+        break;
+      }
       case PlejdCommand.Scene:
       case PlejdCommand.OnOffState:
       case PlejdCommand.ButtonClick:
@@ -812,7 +871,6 @@ export class PlejdService {
         break;
       }
       default: {
-        this.onUpdate(id, isOn);
         this.log.warn(
           `Unknown | command: ${command} | id: ${id} | ${decodedData.toString(
             "hex",

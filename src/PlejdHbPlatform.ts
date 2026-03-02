@@ -10,6 +10,7 @@ import {
 
 import {
   DEFAULT_BRIGHTNESS_TRANSITION_MS,
+  DEFAULT_MOTION_RESET_SEC,
   PLATFORM_NAME,
   PLUGIN_NAME,
 } from "./constants.js";
@@ -35,6 +36,7 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
   public readonly plejdHbAccessories: PlejdHbAccessory[] = [];
   public readonly plejdHbSceneAccessories: PlejdHbSceneAccessory[] = [];
   private readonly transitionMs: number;
+  private readonly motionResetMs: number;
 
   constructor(
     public readonly log: Logger,
@@ -47,6 +49,8 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
 
     this.transitionMs =
       config.transition_ms ?? DEFAULT_BRIGHTNESS_TRANSITION_MS;
+    this.motionResetMs =
+      (config.motion_reset_seconds ?? DEFAULT_MOTION_RESET_SEC) * 1000;
   }
 
   configurePlejd = async () => {
@@ -93,8 +97,14 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
 
         const room = site.rooms.find((x) => x.roomId === device.roomId);
 
-        let identifier = site.outputAddress[device.deviceId]["0"];
-        const twoOutputDeviceId = site.outputAddress[device.deviceId]["1"];
+        const outputAddresses = site.outputAddress[device.deviceId];
+        let identifier = outputAddresses ? outputAddresses["0"] : undefined;
+        const twoOutputDeviceId = outputAddresses ? outputAddresses["1"] : undefined;
+
+        // Sensors (e.g. WMS-01) have no outputAddress, use inputAddress instead
+        if (identifier === undefined && site.inputAddress[device.deviceId]) {
+          identifier = site.inputAddress[device.deviceId]["0"];
+        }
 
         if (
           twoOutputDeviceId &&
@@ -107,8 +117,8 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
           name: device.title,
           model: model,
           identifier: identifier,
-          outputType: device.outputType,
-          uuid: this.generateId(identifier.toString()),
+          outputType: device.outputType ?? "SENSOR",
+          uuid: this.generateId(identifier ? identifier.toString() : device.deviceId),
           room: room?.title,
           hidden: false,
           plejdDeviceId: device.deviceId,
@@ -181,10 +191,11 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
 
     const cryptoKey = Buffer.from(config.crypto_key.replace(/-/g, ""), "hex");
     this.userInputConfig = {
-      // There could be other output types eg: WMS-01
       devices: devices.filter(
         (device) =>
-          device.outputType === "LIGHT" || device.outputType === "RELAY",
+          device.outputType === "LIGHT" ||
+          device.outputType === "RELAY" ||
+          device.outputType === "SENSOR",
       ),
       scenes: scenes,
       cryptoKey: cryptoKey,
@@ -252,6 +263,7 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
             existingAccessory,
             device,
             this.transitionMs,
+            this.motionResetMs,
           ),
         );
       } else {
@@ -308,7 +320,7 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
     accessory.context.device = device;
     // See above.
     this.plejdHbAccessories.push(
-      new PlejdHbAccessory(this, accessory, device, this.transitionMs),
+      new PlejdHbAccessory(this, accessory, device, this.transitionMs, this.motionResetMs),
     );
 
     // link the accessory to your platform
@@ -359,6 +371,9 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
             ?.getCharacteristic(this.Characteristic.Brightness)
             .updateValue(brightness);
         }
+      } else if (device.outputType === "SENSOR") {
+        // Sensor state is handled entirely by PlejdHbAccessory.onPlejdUpdates
+        // which always sets MotionDetected=true with an auto-reset timer.
       } else {
         existingAccessory
           .getService(this.Service.Switch)

@@ -18,12 +18,14 @@ interface DeviceState {
 export class PlejdHbAccessory {
   private service: Service;
   private state: DeviceState;
+  private motionResetTimer?: ReturnType<typeof setTimeout>;
 
   constructor(
     private readonly platform: PlejdHbPlatform,
     private readonly accessory: PlatformAccessory,
     public readonly device: Device,
     private readonly transitionMs: number,
+    private readonly motionResetMs: number,
   ) {
     this.state = {
       brightness: accessory.context.brightness ?? 100,
@@ -41,10 +43,32 @@ export class PlejdHbAccessory {
       .setCharacteristic(this.platform.Characteristic.Model, this.device.model)
       .setCharacteristic(
         this.platform.Characteristic.SerialNumber,
-        this.device.identifier.toString(),
+        this.device.identifier ? this.device.identifier.toString() : this.device.uuid,
       );
 
-    if (this.device.outputType === "LIGHT") {
+    if (this.device.outputType === "SENSOR") {
+      // Remove stale services from previous type assignments
+      for (const staleService of [
+        this.platform.Service.Switch,
+        this.platform.Service.Lightbulb,
+      ]) {
+        const existing = this.accessory.getService(staleService);
+        if (existing) {
+          this.platform.log.info(
+            `Removing stale service from ${this.device.name} (now SENSOR)`,
+          );
+          this.accessory.removeService(existing);
+        }
+      }
+
+      this.service =
+        this.accessory.getService(this.platform.Service.MotionSensor) ||
+        this.accessory.addService(this.platform.Service.MotionSensor);
+
+      this.service
+        .getCharacteristic(this.platform.Characteristic.MotionDetected)
+        .onGet(() => this.state.isOn);
+    } else if (this.device.outputType === "LIGHT") {
       // Remove Switch service if it exists (device type may have changed)
       const existingSwitch = this.accessory.getService(
         this.platform.Service.Switch,
@@ -81,11 +105,13 @@ export class PlejdHbAccessory {
         this.accessory.addService(this.platform.Service.Switch);
     }
 
-    // register handlers for the On/Off Characteristic
-    this.service
-      .getCharacteristic(this.platform.Characteristic.On)
-      .onSet(this.setOn.bind(this))
-      .onGet(this.getOn.bind(this));
+    if (this.device.outputType !== "SENSOR") {
+      // register handlers for the On/Off Characteristic
+      this.service
+        .getCharacteristic(this.platform.Characteristic.On)
+        .onSet(this.setOn.bind(this))
+        .onGet(this.getOn.bind(this));
+    }
 
     this.service.setCharacteristic(
       this.platform.Characteristic.Name,
@@ -94,9 +120,44 @@ export class PlejdHbAccessory {
   }
 
   onPlejdUpdates = (isOn: boolean, brightness?: number) => {
+    if (this.device.outputType === "SENSOR") {
+      this.state.isOn = true;
+      this.service
+        .getCharacteristic(this.platform.Characteristic.MotionDetected)
+        .updateValue(true);
+
+      // Only start the auto-reset timer if one isn't already running.
+      // The sensor broadcasts every ~30s while motion is active;
+      // resetting the 75s timer each time would prevent it from ever firing.
+      if (!this.motionResetTimer) {
+        this.platform.log.info(
+          `Motion detected from ${this.device.name}, will auto-reset in ${this.motionResetMs / 1000}s`,
+        );
+        this.motionResetTimer = setTimeout(() => {
+          this.motionResetTimer = undefined;
+          this.state.isOn = false;
+          this.service
+            .getCharacteristic(this.platform.Characteristic.MotionDetected)
+            .updateValue(false);
+          this.platform.log.info(
+            `Motion auto-reset for ${this.device.name}`,
+          );
+          this.accessory.context = this.state;
+        }, this.motionResetMs);
+      } else {
+        this.platform.log.debug(
+          `Motion sustained for ${this.device.name} (timer already running)`,
+        );
+      }
+
+      this.accessory.context = this.state;
+      return;
+    }
+
     this.platform.log.debug(
       `Updating Homekit state from ${this.device.name}: on=${isOn}, brightness=${brightness?.toFixed(1)}%`,
     );
+
     this.state.isOn = isOn;
 
     this.service
