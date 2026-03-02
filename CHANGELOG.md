@@ -1,3 +1,7 @@
+#### 1.9.0 (2026-03-02)
+
+Add buttons with events
+
 #### 1.8.1 (2026-03-02)
 
 Add support for WMS-01 motion detection
