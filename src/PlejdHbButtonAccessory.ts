@@ -69,6 +69,8 @@ export class PlejdHbButtonAccessory {
   }
 
   private initExpanded(button: Button) {
+    const displayName = `${button.name} Button`;
+
     this.accessory
       .getService(this.platform.Service.AccessoryInformation)!
       .setCharacteristic(
@@ -80,7 +82,7 @@ export class PlejdHbButtonAccessory {
         this.platform.Characteristic.SerialNumber,
         `button-${button.deviceAddress}-${button.buttonIndex}`,
       )
-      .setCharacteristic(this.platform.Characteristic.Name, button.name);
+      .setCharacteristic(this.platform.Characteristic.Name, displayName);
 
     // Remove any leftover ServiceLabel from a previous grouped-mode cache
     const staleLabel = this.accessory.getService(
@@ -96,14 +98,14 @@ export class PlejdHbButtonAccessory {
     if (!service) {
       service = this.accessory.addService(
         this.platform.Service.StatelessProgrammableSwitch,
-        button.name,
+        displayName,
       );
     }
 
-    service.setCharacteristic(this.platform.Characteristic.Name, button.name);
+    service.setCharacteristic(this.platform.Characteristic.Name, displayName);
     service.setCharacteristic(
       this.platform.Characteristic.ConfiguredName,
-      button.name,
+      displayName,
     );
 
     const switchEventCharacteristic = service.getCharacteristic(

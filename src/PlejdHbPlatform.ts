@@ -525,20 +525,21 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
 
   private discoverButtonsExpanded = (buttons: Button[]) => {
     for (const button of buttons) {
+      const displayName = `${button.name} Button`;
       const existingAccessory = this.accessories.find(
         (accessory) => accessory.UUID === button.uuid,
       );
 
       if (existingAccessory) {
         existingAccessory.context.button = button;
-        existingAccessory.displayName = button.name;
+        existingAccessory.displayName = displayName;
         this.homebridgeApi.updatePlatformAccessories([existingAccessory]);
         this.plejdHbButtonAccessories.push(
           PlejdHbButtonAccessory.createExpanded(this, existingAccessory, button),
         );
       } else {
         const accessory = new this.homebridgeApi.platformAccessory(
-          button.name,
+          displayName,
           button.uuid,
         );
         accessory.context.button = button;
