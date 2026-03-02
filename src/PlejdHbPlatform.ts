@@ -93,8 +93,14 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
 
         const room = site.rooms.find((x) => x.roomId === device.roomId);
 
-        let identifier = site.outputAddress[device.deviceId]["0"];
-        const twoOutputDeviceId = site.outputAddress[device.deviceId]["1"];
+        const outputAddresses = site.outputAddress[device.deviceId];
+        let identifier = outputAddresses ? outputAddresses["0"] : undefined;
+        const twoOutputDeviceId = outputAddresses ? outputAddresses["1"] : undefined;
+
+        // Sensors (e.g. WMS-01) have no outputAddress, use inputAddress instead
+        if (identifier === undefined && site.inputAddress[device.deviceId]) {
+          identifier = site.inputAddress[device.deviceId]["0"];
+        }
 
         if (
           twoOutputDeviceId &&
@@ -107,8 +113,8 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
           name: device.title,
           model: model,
           identifier: identifier,
-          outputType: device.outputType,
-          uuid: this.generateId(identifier.toString()),
+          outputType: device.outputType ?? "SENSOR",
+          uuid: this.generateId(identifier ? identifier.toString() : device.deviceId),
           room: room?.title,
           hidden: false,
           plejdDeviceId: device.deviceId,
@@ -181,10 +187,11 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
 
     const cryptoKey = Buffer.from(config.crypto_key.replace(/-/g, ""), "hex");
     this.userInputConfig = {
-      // There could be other output types eg: WMS-01
       devices: devices.filter(
         (device) =>
-          device.outputType === "LIGHT" || device.outputType === "RELAY",
+          device.outputType === "LIGHT" ||
+          device.outputType === "RELAY" ||
+          device.outputType === "SENSOR",
       ),
       scenes: scenes,
       cryptoKey: cryptoKey,
@@ -359,6 +366,11 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
             ?.getCharacteristic(this.Characteristic.Brightness)
             .updateValue(brightness);
         }
+      } else if (device.outputType === "SENSOR") {
+        existingAccessory
+          .getService(this.Service.MotionSensor)
+          ?.getCharacteristic(this.Characteristic.MotionDetected)
+          ?.updateValue(isOn);
       } else {
         existingAccessory
           .getService(this.Service.Switch)

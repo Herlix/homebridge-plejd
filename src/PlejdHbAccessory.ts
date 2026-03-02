@@ -4,6 +4,8 @@ import { Device } from "./model/device.js";
 import { PlejdHbPlatform } from "./PlejdHbPlatform.js";
 import { PLATFORM_NAME } from "./constants.js";
 
+const MOTION_RESET_MS = 75_000;
+
 interface DeviceState {
   isOn: boolean;
   brightness: number;
@@ -18,6 +20,7 @@ interface DeviceState {
 export class PlejdHbAccessory {
   private service: Service;
   private state: DeviceState;
+  private motionResetTimer?: ReturnType<typeof setTimeout>;
 
   constructor(
     private readonly platform: PlejdHbPlatform,
@@ -41,10 +44,32 @@ export class PlejdHbAccessory {
       .setCharacteristic(this.platform.Characteristic.Model, this.device.model)
       .setCharacteristic(
         this.platform.Characteristic.SerialNumber,
-        this.device.identifier.toString(),
+        this.device.identifier ? this.device.identifier.toString() : this.device.uuid,
       );
 
-    if (this.device.outputType === "LIGHT") {
+    if (this.device.outputType === "SENSOR") {
+      // Remove stale services from previous type assignments
+      for (const staleService of [
+        this.platform.Service.Switch,
+        this.platform.Service.Lightbulb,
+      ]) {
+        const existing = this.accessory.getService(staleService);
+        if (existing) {
+          this.platform.log.info(
+            `Removing stale service from ${this.device.name} (now SENSOR)`,
+          );
+          this.accessory.removeService(existing);
+        }
+      }
+
+      this.service =
+        this.accessory.getService(this.platform.Service.MotionSensor) ||
+        this.accessory.addService(this.platform.Service.MotionSensor);
+
+      this.service
+        .getCharacteristic(this.platform.Characteristic.MotionDetected)
+        .onGet(() => this.state.isOn);
+    } else if (this.device.outputType === "LIGHT") {
       // Remove Switch service if it exists (device type may have changed)
       const existingSwitch = this.accessory.getService(
         this.platform.Service.Switch,
@@ -81,11 +106,13 @@ export class PlejdHbAccessory {
         this.accessory.addService(this.platform.Service.Switch);
     }
 
-    // register handlers for the On/Off Characteristic
-    this.service
-      .getCharacteristic(this.platform.Characteristic.On)
-      .onSet(this.setOn.bind(this))
-      .onGet(this.getOn.bind(this));
+    if (this.device.outputType !== "SENSOR") {
+      // register handlers for the On/Off Characteristic
+      this.service
+        .getCharacteristic(this.platform.Characteristic.On)
+        .onSet(this.setOn.bind(this))
+        .onGet(this.getOn.bind(this));
+    }
 
     this.service.setCharacteristic(
       this.platform.Characteristic.Name,
@@ -97,6 +124,32 @@ export class PlejdHbAccessory {
     this.platform.log.debug(
       `Updating Homekit state from ${this.device.name}: on=${isOn}, brightness=${brightness?.toFixed(1)}%`,
     );
+
+    if (this.device.outputType === "SENSOR") {
+      this.state.isOn = true;
+      this.service
+        .getCharacteristic(this.platform.Characteristic.MotionDetected)
+        .updateValue(true);
+
+      // Auto-reset motion after timeout (sensor only fires "detected", not "cleared")
+      if (this.motionResetTimer) {
+        clearTimeout(this.motionResetTimer);
+      }
+      this.motionResetTimer = setTimeout(() => {
+        this.state.isOn = false;
+        this.service
+          .getCharacteristic(this.platform.Characteristic.MotionDetected)
+          .updateValue(false);
+        this.platform.log.debug(
+          `Motion auto-reset for ${this.device.name}`,
+        );
+        this.accessory.context = this.state;
+      }, MOTION_RESET_MS);
+
+      this.accessory.context = this.state;
+      return;
+    }
+
     this.state.isOn = isOn;
 
     this.service
