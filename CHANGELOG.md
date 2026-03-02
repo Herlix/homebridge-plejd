@@ -1,3 +1,7 @@
+#### 1.11.1 (2026-03-02)
+
+Filter invalid devices
+
 #### 1.11.0 (2026-03-02)
 
 Move single button with better naming
