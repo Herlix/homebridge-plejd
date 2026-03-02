@@ -10,6 +10,8 @@ import {
 
 import {
   DEFAULT_BRIGHTNESS_TRANSITION_MS,
+  DEFAULT_DOUBLE_PRESS_WINDOW_MS,
+  DEFAULT_LONG_PRESS_THRESHOLD_MS,
   DEFAULT_MOTION_RESET_SEC,
   PLATFORM_NAME,
   PLUGIN_NAME,
@@ -42,6 +44,8 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
   private buttonPressDetector?: ButtonPressDetector;
   private readonly transitionMs: number;
   private readonly motionResetMs: number;
+  private readonly doublePressWindowMs: number;
+  private readonly longPressThresholdMs: number;
 
   constructor(
     public readonly log: Logger,
@@ -56,6 +60,10 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
       config.transition_ms ?? DEFAULT_BRIGHTNESS_TRANSITION_MS;
     this.motionResetMs =
       (config.motion_reset_seconds ?? DEFAULT_MOTION_RESET_SEC) * 1000;
+    this.doublePressWindowMs =
+      config.double_press_window_ms ?? DEFAULT_DOUBLE_PRESS_WINDOW_MS;
+    this.longPressThresholdMs =
+      config.long_press_threshold_ms ?? DEFAULT_LONG_PRESS_THRESHOLD_MS;
   }
 
   configurePlejd = async () => {
@@ -210,9 +218,12 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
           hidden: false,
         };
 
+        const hiddenButtons = (config.hidden_buttons as string[]) || [];
+        button.hidden = hiddenButtons.includes(button.name);
+
         buttons.push(button);
         this.log.info(
-          `Found button: ${button.name} (device=${button.deviceAddress}, index=${button.buttonIndex})`,
+          `Found button: ${button.name} (device=${button.deviceAddress}, index=${button.buttonIndex})${button.hidden ? " [hidden]" : ""}`,
         );
       });
     }
@@ -272,7 +283,12 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
 
     this.discoverDevices();
     this.discoverScenes();
-    this.discoverButtons();
+
+    if (config.show_buttons !== false) {
+      this.discoverButtons();
+    } else {
+      log.info("Buttons disabled via show_buttons config option");
+    }
   };
 
   /**
@@ -447,6 +463,9 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
   discoverButtons = () => {
     this.buttonPressDetector = new ButtonPressDetector(
       this.onPressDetected.bind(this),
+      this.doublePressWindowMs,
+      this.longPressThresholdMs,
+      this.log,
     );
 
     for (const button of this.userInputConfig!.buttons) {
@@ -494,7 +513,7 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
     buttonIndex: number,
     action: "press" | "release",
   ) => {
-    this.log.info(
+    this.log.debug(
       `Button event: device=${deviceAddress} button=${buttonIndex} action=${action}`,
     );
     this.buttonPressDetector?.handleEvent(deviceAddress, buttonIndex, action);

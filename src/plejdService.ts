@@ -887,13 +887,12 @@ export class PlejdService {
       case PlejdCommand.EventFired: {
         const deviceAddr = decodedData.length > 5 ? decodedData[5] : id;
         const buttonIndex = decodedData.length > 6 ? decodedData[6] : 0;
+        const actionByte = decodedData.length > 7 ? decodedData[7] : undefined;
         const action: "press" | "release" =
-          decodedData.length > 7 && decodedData[7] === 0x00
-            ? "release"
-            : "press";
+          actionByte === 0x00 ? "release" : "press";
 
-        this.log.info(
-          `BUTTON EVENT | device=${deviceAddr} button=${buttonIndex} action=${action} | ${decodedData.toString("hex")}`,
+        this.log.debug(
+          `Button raw event | device=${deviceAddr} button=${buttonIndex} action=${action} | ${decodedData.toString("hex")}`,
         );
 
         this.onButtonEvent?.(deviceAddr, buttonIndex, action);
@@ -908,6 +907,7 @@ export class PlejdService {
       }
       case PlejdCommand.Scene:
       case PlejdCommand.OnOffState:
+      case PlejdCommand.ButtonClick:
       case PlejdCommand.RequestResponse:
       case PlejdCommand.RequestNoResponse:
       case PlejdCommand.RequestReadValue: {
