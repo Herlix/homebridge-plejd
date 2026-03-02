@@ -32,6 +32,7 @@ sed -i '' "1s/^/$ENTRY\n/" CHANGELOG.md
 echo "Committing changes..."
 git add package.json package-lock.json CHANGELOG.md
 git commit -m "Release $TAG"
+git push
 
 echo "Creating GitHub release (tag: $TAG)..."
 gh release create "$TAG" --title "$TAG" --notes "$DESCRIPTION"
