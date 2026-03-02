@@ -1,3 +1,7 @@
+#### 1.11.0 (2026-03-02)
+
+Move single button with better naming
+
 #### 1.10.0 (2026-03-02)
 
 Add buttons with events
