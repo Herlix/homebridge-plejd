@@ -1,4 +1,4 @@
-#### 1.8.1 (2026-03-3)
+#### 1.8.1 (2026-03-02)
 
 Add support for WMS-01 motion detection
 

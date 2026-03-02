@@ -7,9 +7,10 @@
     "description": "HomeKit support for the Plejd BLE platform using Homebridge",
     "license": "Apache-2.0",
     "type": "module",
+    "homepage": "https://github.com/Herlix/homebridge-plejd#readme",
     "repository": {
         "type": "git",
-        "url": "git@github.com:Herlix/homebridge-plejd.git"
+        "url": "https://github.com/Herlix/homebridge-plejd.git"
     },
     "bugs": {
         "url": "https://github.com/Herlix/homebridge-plejd/issues"
