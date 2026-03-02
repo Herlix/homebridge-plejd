@@ -233,7 +233,16 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
       });
     }
 
-    for (let i = 0; i < devices.length; i++) {
+    for (let i = devices.length - 1; i >= 0; i--) {
+      if (!devices[i].name || !devices[i].identifier) {
+        log.error(
+          `Skipping invalid device entry (name: ${devices[i].name}, identifier: ${devices[i].identifier}). ` +
+            `Check your configuration for empty or incomplete devices.`,
+        );
+        devices.splice(i, 1);
+        continue;
+      }
+
       if (!devices[i].outputType) {
         log.warn(
           `Device "${devices[i].name}" is missing the "type" field. ` +
@@ -242,11 +251,7 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
         devices[i].outputType = "LIGHT";
       }
 
-      if (devices[i].identifier) {
-        devices[i].uuid = this.generateId(devices[i].identifier.toString());
-      } else {
-        log.error("Missing device identifier |", devices[i].name);
-      }
+      devices[i].uuid = this.generateId(devices[i].identifier.toString());
     }
 
     if (!config.crypto_key) {
