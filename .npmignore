@@ -1,6 +1,9 @@
 # Ignore source code
 src
 
+# Release script
+release.sh
+
 # ------------- Defaults ------------- #
 
 # gitHub actions
