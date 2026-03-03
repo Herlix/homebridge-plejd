@@ -13,6 +13,7 @@ import {
   RECONNECT_DELAY,
   MAX_PING_FAILURES,
   DEVICE_COOLDOWN,
+  SCAN_TIMEOUT,
 } from "./constants.js";
 import {
   delay,
@@ -407,8 +408,22 @@ export class PlejdService {
 
         this.log.info("Scanning for Plejd devices");
 
+        let settled = false;
+
+        const scanTimer = setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          this.removeDiscoverHandler();
+          noble.stopScanning();
+          reject(new Error("Scan timeout — no suitable Plejd device found"));
+        }, SCAN_TIMEOUT);
+
         this.discoverHandler = (peripheral: noble.Peripheral) => {
+          if (settled) return;
+
           if (gen !== this.loopGeneration) {
+            settled = true;
+            clearTimeout(scanTimer);
             this.removeDiscoverHandler();
             noble.stopScanning();
             reject(new Error("Generation changed during scan"));
@@ -428,6 +443,19 @@ export class PlejdService {
               `Skipping unknown device: ${deviceAddress}`,
             );
             return;
+          }
+
+          // Skip sensor devices — they shouldn't be used as the mesh connection target
+          if (deviceAddress) {
+            const device = this.config.devices.find(
+              (x) => x.plejdDeviceId === deviceAddress,
+            );
+            if (device?.outputType === "SENSOR") {
+              this.log.debug(
+                `Skipping sensor device: ${deviceAddress}`,
+              );
+              return;
+            }
           }
 
           // If MAC extracted and in cooldown, skip
@@ -451,6 +479,8 @@ export class PlejdService {
             `Discovered | ${peripheral.advertisement.localName} | addr: ${displayAddr} | RSSI: ${peripheral.rssi} dB`,
           );
 
+          settled = true;
+          clearTimeout(scanTimer);
           this.removeDiscoverHandler();
           noble.stopScanning();
           resolve({ peripheral, address });
@@ -460,6 +490,9 @@ export class PlejdService {
 
         noble.startScanning([PlejdCharacteristics.Service], false, (err) => {
           if (err) {
+            if (settled) return;
+            settled = true;
+            clearTimeout(scanTimer);
             this.removeDiscoverHandler();
             reject(new Error(`Failed to start scanning: ${err}`));
           }

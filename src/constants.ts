@@ -28,6 +28,9 @@ export const AUTH_STEP_DELAY = 100;
 // Probing
 export const PROBE_TIMEOUT = 30000;
 
+// Scanning
+export const SCAN_TIMEOUT = 30000;
+
 // Sensor
 export const DEFAULT_MOTION_RESET_SEC = 75;
 
