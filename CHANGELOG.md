@@ -1,3 +1,7 @@
+#### 1.13.1 (2026-03-03)
+
+Fix reconnect timeout issues to make it more stable
+
 #### 1.13.0 (2026-03-02)
 
 Add buttons to name of expanded buttons
