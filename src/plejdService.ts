@@ -49,6 +49,49 @@ export enum PlejdCommand {
   OutputSet = "0420",
   EventPrepare = "0015",
   EventFired = "0016",
+  TrmSetpoint = "045c",
+  TrmMode = "045f",
+  TrmPwmDuty = "0461",
+}
+
+export interface ThermostatState {
+  mode: number | null;
+  target: number;
+  current: number;
+  heating: boolean | null;
+  error: boolean;
+}
+
+/**
+ * Parse the 24-bit thermostat state encoding from BLE notifications.
+ *
+ * Bit layout (3 bytes combined):
+ *   Bits 14-16: Mode (3 bits)
+ *   Bit 13:     Error flag
+ *   Bits 6-12:  Target temperature (raw value - 10 = °C)
+ *   Bits 0-5:   Current temperature (raw value - 10 = °C)
+ *
+ * An optional 4th byte's MSB indicates active heating.
+ */
+export function parseThermostatState(
+  stateByte: number,
+  payload: Buffer,
+): ThermostatState {
+  const data = (stateByte << 16) | (payload[0] << 8) | payload[1];
+
+  const mode = (data & 0x01c000) >> 14;
+  const error = (data & 0x002000) !== 0;
+  const target = ((data & 0x001fc0) >> 6) - 10;
+  const current = (data & 0x00003f) - 10;
+  const heating = payload.length > 2 ? (payload[2] & 0x80) !== 0 : null;
+
+  return {
+    mode: error ? null : mode,
+    target,
+    current,
+    heating,
+    error,
+  };
 }
 
 /**
@@ -101,6 +144,8 @@ export class PlejdService {
 
   private static readonly PROBE_NEEDED = "PROBE_NEEDED";
 
+  private readonly climateIdentifiers: Set<number>;
+
   constructor(
     private readonly config: UserInputConfig,
     public readonly log: Logger,
@@ -114,7 +159,17 @@ export class PlejdService {
       buttonIndex: number,
       action: "press" | "release",
     ) => void,
-  ) {}
+    private readonly onThermostatUpdate?: (
+      identifier: number,
+      state: ThermostatState,
+    ) => void,
+  ) {
+    this.climateIdentifiers = new Set(
+      config.devices
+        .filter((d) => d.outputType === "CLIMATE")
+        .map((d) => d.identifier),
+    );
+  }
 
   // --- Public API --- \\
 
@@ -209,6 +264,67 @@ export class PlejdService {
 
     this.log.debug(`BLE: Triggering scene ${sceneIndex}`);
     this.sendQueue.unshift(Buffer.from(payload, "hex"));
+  };
+
+  /**
+   * Send thermostat commands to a CLIMATE device.
+   *
+   * @param identifier - The device identifier
+   * @param options.targetTemp - Target temperature in °C (sent as temp*10, LE 16-bit)
+   * @param options.mode - Operating mode (0=Off, 7=Normal, etc.)
+   * @param options.pwmDuty - PWM duty cycle 0-100 (for PWM regulation mode)
+   */
+  updateThermostat = (
+    identifier: number,
+    options: {
+      targetTemp?: number;
+      mode?: number;
+      pwmDuty?: number;
+    },
+  ) => {
+    const deviceIdHex = identifier.toString(16).padStart(2, "0");
+
+    if (options.mode !== undefined) {
+      const modeHex = options.mode.toString(16).padStart(2, "0");
+      const payload =
+        deviceIdHex +
+        PlejdCommand.RequestNoResponse +
+        PlejdCommand.TrmMode +
+        modeHex;
+      this.log.debug(
+        `BLE: Setting thermostat mode for device ${identifier} to ${options.mode}`,
+      );
+      this.sendQueue.unshift(Buffer.from(payload, "hex"));
+    }
+
+    if (options.targetTemp !== undefined) {
+      const tempValue = Math.round(options.targetTemp * 10);
+      const lowByte = (tempValue & 0xff).toString(16).padStart(2, "0");
+      const highByte = ((tempValue >> 8) & 0xff).toString(16).padStart(2, "0");
+      const payload =
+        deviceIdHex +
+        PlejdCommand.RequestNoResponse +
+        PlejdCommand.TrmSetpoint +
+        lowByte +
+        highByte;
+      this.log.debug(
+        `BLE: Setting thermostat target temp for device ${identifier} to ${options.targetTemp}°C`,
+      );
+      this.sendQueue.unshift(Buffer.from(payload, "hex"));
+    }
+
+    if (options.pwmDuty !== undefined) {
+      const dutyHex = options.pwmDuty.toString(16).padStart(2, "0");
+      const payload =
+        deviceIdHex +
+        PlejdCommand.RequestNoResponse +
+        PlejdCommand.TrmPwmDuty +
+        dutyHex;
+      this.log.debug(
+        `BLE: Setting thermostat PWM duty for device ${identifier} to ${options.pwmDuty}%`,
+      );
+      this.sendQueue.unshift(Buffer.from(payload, "hex"));
+    }
   };
 
   configureBLE = () => {
@@ -854,6 +970,24 @@ export class PlejdService {
           this.onUpdate(id, isOn);
           break;
         }
+
+        if (this.climateIdentifiers.has(id)) {
+          const stateByte = decodedData[5];
+          const payload = decodedData.subarray(6);
+          if (payload.length >= 2) {
+            const thermoState = parseThermostatState(stateByte, payload);
+            this.log.debug(
+              `Thermostat state: device=${id} mode=${thermoState.mode} target=${thermoState.target}°C current=${thermoState.current}°C heating=${thermoState.heating} error=${thermoState.error}`,
+            );
+            this.onThermostatUpdate?.(id, thermoState);
+          } else {
+            this.log.warn(
+              `Thermostat payload too short for device ${id}: ${payload.length} bytes`,
+            );
+          }
+          break;
+        }
+
         const dim = parseInt(decodedData.toString("hex", 7, 8), 16);
 
         // Convert to Homebridge 1-100
@@ -903,6 +1037,15 @@ export class PlejdService {
       }
       case PlejdCommand.EventPrepare: {
         // Echo of our own CMD_EVENT_PREPARE — ignore
+        break;
+      }
+      case PlejdCommand.TrmSetpoint:
+      case PlejdCommand.TrmMode:
+      case PlejdCommand.TrmPwmDuty: {
+        // Thermostat command echoes — state will arrive via StateBrightness
+        this.log.debug(
+          `Thermostat command echo: ${commandType} for device ${id}`,
+        );
         break;
       }
       case PlejdCommand.Scene:
