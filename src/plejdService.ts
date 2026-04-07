@@ -293,7 +293,7 @@ export class PlejdService {
     try {
       // 2. Connect
       this.log.info(
-        `Connecting to ${peripheral.advertisement.localName} (addr: ${deviceAddress})`,
+        `Connecting to ${peripheral.advertisement.localName ?? deviceAddress} (addr: ${deviceAddress})`,
       );
       await race(() => peripheral.connectAsync(), CONNECT_TIMEOUT);
       if (gen !== this.loopGeneration) {
@@ -302,7 +302,7 @@ export class PlejdService {
       }
 
       this.log.info(
-        `Connected to mesh | ${peripheral.advertisement.localName} (addr: ${deviceAddress})`,
+        `Connected to mesh | ${peripheral.advertisement.localName ?? deviceAddress} (addr: ${deviceAddress})`,
       );
 
       // 3. Discover characteristics
@@ -476,7 +476,7 @@ export class PlejdService {
               : address;
 
           this.log.info(
-            `Discovered | ${peripheral.advertisement.localName} | addr: ${displayAddr} | RSSI: ${peripheral.rssi} dB`,
+            `Discovered | ${peripheral.advertisement.localName ?? displayAddr} | addr: ${displayAddr} | RSSI: ${peripheral.rssi} dB`,
           );
 
           settled = true;
@@ -974,9 +974,12 @@ export class PlejdService {
 
   private async tryDisconnect(peripheral: noble.Peripheral) {
     try {
-      await peripheral.disconnectAsync();
+      // Timeout required: on Linux/BlueZ, disconnectAsync() can hang for
+      // minutes if the connection never fully established (e.g. after a
+      // connectAsync timeout), blocking the reconnect loop.
+      await race(() => peripheral.disconnectAsync(), 5000);
     } catch {
-      // Ignore — may already be disconnected
+      // Ignore — may already be disconnected or timed out
     }
   }
 }
