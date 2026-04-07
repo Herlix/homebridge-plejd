@@ -1,3 +1,7 @@
+#### 1.13.2 (2026-04-07)
+
+Add timout on disconnects. (On linux BlueZ can hang during disconnect)
+
 #### 1.13.1 (2026-03-03)
 
 Fix reconnect timeout issues to make it more stable
