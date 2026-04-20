@@ -75,7 +75,7 @@ The underlying protocol is relying on the BLE address to be exposed. This is not
 
 I do not own all hardware from Plejd, this means I have not been able to make sure that it all works. However, feel free to add a PR. I'd like to add switches and sensors, this is not yet available as I do not own any of these.
 
-I would like to add support for items like WMS-01 and TRM-01 in the future.
+WPH-01 is experimental, I don't own the hardware so I can't fully test it. Dimmers, switches and presence sensor should work.
 
 ## Thanks
 
