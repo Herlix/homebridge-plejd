@@ -190,6 +190,29 @@ export interface OutputGroupsCCDE6AD41DBC {
   "0": number[];
 }
 
+export interface TemperatureLimits {
+  maxFloorTemperature: number;
+  minFloorTemperature: number;
+  maxRoomTemperature: number;
+  minRoomTemperature: number;
+  maxUserInputTemperature: number;
+  minUserInputTemperature: number;
+}
+
+export interface PWMRegulationConfig {
+  interval: number;
+  minDuty: number;
+  maxDuty: number;
+  minDutyUserInput: number;
+  maxDutyUserInput: number;
+}
+
+export interface OutputSettingClimateSettings {
+  regulationMode: string;
+  temperatureLimits?: TemperatureLimits;
+  pwmRegulationConfig?: PWMRegulationConfig;
+}
+
 export interface OutputSetting {
   deviceId: string;
   siteId: string;
@@ -208,6 +231,7 @@ export interface OutputSetting {
   createdAt: string;
   updatedAt: string;
   predefinedLoad: PredefinedLoad;
+  climateSettings?: OutputSettingClimateSettings;
   ACL: PurpleACL;
   objectId: string;
   __type: PurpleType;

@@ -17,14 +17,15 @@ import {
   PLUGIN_NAME,
 } from "./constants.js";
 import { PlejdHbAccessory } from "./PlejdHbAccessory.js";
+import { PlejdHbThermostatAccessory } from "./PlejdHbThermostatAccessory.js";
 import { PlejdHbSceneAccessory } from "./PlejdHbSceneAccessory.js";
 import { PlejdHbButtonAccessory } from "./PlejdHbButtonAccessory.js";
 import { ButtonPressDetector, PressType } from "./ButtonPressDetector.js";
 import { UserInputConfig } from "./model/userInputConfig.js";
-import { Device } from "./model/device.js";
+import { ClimateSettings, Device } from "./model/device.js";
 import { Button } from "./model/button.js";
 import { Scene } from "./model/scene.js";
-import { PlejdService } from "./plejdService.js";
+import { PlejdService, ThermostatState } from "./plejdService.js";
 import PlejdRemoteApi from "./plejdApi.js";
 import { Site } from "./model/plejdSite.js";
 
@@ -39,6 +40,7 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
   public readonly accessories: PlatformAccessory[] = [];
 
   public readonly plejdHbAccessories: PlejdHbAccessory[] = [];
+  public readonly plejdHbThermostatAccessories: PlejdHbThermostatAccessory[] = [];
   public readonly plejdHbSceneAccessories: PlejdHbSceneAccessory[] = [];
   public readonly plejdHbButtonAccessories: PlejdHbButtonAccessory[] = [];
   private buttonPressDetector?: ButtonPressDetector;
@@ -127,15 +129,49 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
           identifier = twoOutputDeviceId;
         }
 
+        const CLIMATE_TRAIT = 0x20;
+        let outputType: Device["outputType"] = device.outputType ?? "SENSOR";
+        let climateSettings: ClimateSettings | undefined;
+
+        if (
+          outputType !== "LIGHT" &&
+          outputType !== "RELAY" &&
+          device.traits & CLIMATE_TRAIT
+        ) {
+          outputType = "CLIMATE";
+
+          const outputSetting = site.outputSettings.find(
+            (os) => os.deviceId === device.deviceId && os.output === 0,
+          );
+          const cs = outputSetting?.climateSettings;
+          if (cs) {
+            if (cs.regulationMode === "PWM" && cs.pwmRegulationConfig) {
+              climateSettings = {
+                regulationMode: "PWM",
+                minTemp: cs.pwmRegulationConfig.minDutyUserInput,
+                maxTemp: cs.pwmRegulationConfig.maxDutyUserInput,
+                step: cs.pwmRegulationConfig.interval,
+              };
+            } else if (cs.temperatureLimits) {
+              climateSettings = {
+                regulationMode: "TEMP",
+                minTemp: cs.temperatureLimits.minUserInputTemperature,
+                maxTemp: cs.temperatureLimits.maxUserInputTemperature,
+              };
+            }
+          }
+        }
+
         const res: Device = {
           name: device.title,
           model: model,
           identifier: identifier,
-          outputType: device.outputType ?? "SENSOR",
+          outputType: outputType,
           uuid: this.generateId(identifier ? identifier.toString() : device.deviceId),
           room: room?.title,
           hidden: false,
           plejdDeviceId: device.deviceId,
+          climateSettings,
         };
 
         const pre = devices.findIndex((x) => x.identifier === res.identifier);
@@ -266,7 +302,8 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
         (device) =>
           device.outputType === "LIGHT" ||
           device.outputType === "RELAY" ||
-          device.outputType === "SENSOR",
+          device.outputType === "SENSOR" ||
+          device.outputType === "CLIMATE",
       ),
       scenes: scenes,
       buttons: buttons,
@@ -288,6 +325,7 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
       log,
       this.onPlejdUpdates.bind(this),
       this.onButtonEvent.bind(this),
+      this.onThermostatUpdate.bind(this),
     );
     this.plejdService.configureBLE();
 
@@ -352,15 +390,22 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
         existingAccessory.context.device = device;
         existingAccessory.displayName = device.name;
         this.homebridgeApi.updatePlatformAccessories([existingAccessory]);
-        this.plejdHbAccessories.push(
-          new PlejdHbAccessory(
-            this,
-            existingAccessory,
-            device,
-            this.transitionMs,
-            this.motionResetMs,
-          ),
-        );
+
+        if (device.outputType === "CLIMATE") {
+          this.plejdHbThermostatAccessories.push(
+            new PlejdHbThermostatAccessory(this, existingAccessory, device),
+          );
+        } else {
+          this.plejdHbAccessories.push(
+            new PlejdHbAccessory(
+              this,
+              existingAccessory,
+              device,
+              this.transitionMs,
+              this.motionResetMs,
+            ),
+          );
+        }
       } else {
         this.addNewDevice(device);
       }
@@ -416,10 +461,16 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
       device.uuid,
     );
     accessory.context.device = device;
-    // See above.
-    this.plejdHbAccessories.push(
-      new PlejdHbAccessory(this, accessory, device, this.transitionMs, this.motionResetMs),
-    );
+
+    if (device.outputType === "CLIMATE") {
+      this.plejdHbThermostatAccessories.push(
+        new PlejdHbThermostatAccessory(this, accessory, device),
+      );
+    } else {
+      this.plejdHbAccessories.push(
+        new PlejdHbAccessory(this, accessory, device, this.transitionMs, this.motionResetMs),
+      );
+    }
 
     // link the accessory to your platform
     this.homebridgeApi.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [
@@ -428,6 +479,19 @@ export class PlejdHbPlatform implements DynamicPlatformPlugin {
 
     if (!this.accessories.find((x) => x.UUID === device.uuid)) {
       this.accessories.push(accessory);
+    }
+  };
+
+  onThermostatUpdate = (identifier: number, state: ThermostatState) => {
+    const thermostatAccessory = this.plejdHbThermostatAccessories.find(
+      (acc) => acc.device.identifier === identifier,
+    );
+    if (thermostatAccessory) {
+      thermostatAccessory.onThermostatUpdate(state);
+    } else {
+      this.log.debug(
+        `Received thermostat update for unknown device ${identifier}`,
+      );
     }
   };
 

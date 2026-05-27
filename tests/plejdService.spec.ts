@@ -1,5 +1,9 @@
 import { Logger } from "homebridge/lib/logger";
-import { PlejdCommand, PlejdService } from "../src/plejdService";
+import {
+  PlejdCommand,
+  PlejdService,
+  parseThermostatState,
+} from "../src/plejdService";
 import { PLEJD_WRITE_TIMEOUT } from "../src/constants";
 
 describe("PlejdService updateState", () => {
@@ -137,5 +141,218 @@ describe("PlejdService updateState", () => {
       const expectedSteps = 1;
       expect(queue.length).toBe(expectedSteps);
     });
+  });
+});
+
+describe("parseThermostatState", () => {
+  it("should parse normal operating state", () => {
+    // Mode=7 (Normal), no error, target=30°C (raw 40), current=22°C (raw 32)
+    // Bit layout: 0000 000M MMET TTTT TTCC CCCC
+    // Mode=7 (111), Error=0, Target=40 (0101000), Current=32 (100000)
+    // = 0000 0001 1101 0100 0100 0000
+    // = 0x01D440
+    const stateByte = 0x01; // high byte
+    const payload = Buffer.from([0xd4, 0x40]); // middle and low bytes
+
+    const result = parseThermostatState(stateByte, payload);
+
+    expect(result.mode).toBe(7);
+    expect(result.error).toBe(false);
+    expect(result.target).toBe(30);
+    expect(result.current).toBe(22);
+    expect(result.heating).toBeNull();
+  });
+
+  it("should parse state with heating active", () => {
+    // Same as above but with 3rd payload byte indicating heating
+    const stateByte = 0x01;
+    const payload = Buffer.from([0xd4, 0x40, 0x80]);
+
+    const result = parseThermostatState(stateByte, payload);
+
+    expect(result.mode).toBe(7);
+    expect(result.target).toBe(30);
+    expect(result.current).toBe(22);
+    expect(result.heating).toBe(true);
+  });
+
+  it("should parse state with heating inactive", () => {
+    const stateByte = 0x01;
+    const payload = Buffer.from([0xd4, 0x40, 0x00]);
+
+    const result = parseThermostatState(stateByte, payload);
+
+    expect(result.heating).toBe(false);
+  });
+
+  it("should parse OFF mode (mode=0)", () => {
+    // Mode=0, no error, target=25°C (raw 35), current=20°C (raw 30)
+    // Mode=0 (000), Error=0, Target=35 (0100011), Current=30 (011110)
+    // = 0000 0000 0010 0011 0011 1110
+    // = 0x00233E
+    const stateByte = 0x00;
+    const payload = Buffer.from([0x23, 0x3e]);
+
+    const result = parseThermostatState(stateByte, payload);
+
+    expect(result.mode).toBe(0);
+    expect(result.error).toBe(false);
+    expect(result.target).toBe(25);
+    expect(result.current).toBe(20);
+  });
+
+  it("should parse error state", () => {
+    // Error bit set (bit 13)
+    // Mode=0, Error=1, Target=0, Current=0
+    // = 0000 0000 0010 0000 0000 0000
+    // = 0x002000
+    const stateByte = 0x00;
+    const payload = Buffer.from([0x20, 0x00]);
+
+    const result = parseThermostatState(stateByte, payload);
+
+    expect(result.mode).toBeNull();
+    expect(result.error).toBe(true);
+    expect(result.target).toBe(-10);
+    expect(result.current).toBe(-10);
+  });
+
+  it("should parse negative temperatures (below 10 raw offset)", () => {
+    // Mode=7, target=5°C (raw 15), current=-5°C (raw 5)
+    // Mode=7 (111), Error=0, Target=15 (0001111), Current=5 (000101)
+    // = 0000 0001 1100 0011 1100 0101
+    // = 0x01C3C5
+    const stateByte = 0x01;
+    const payload = Buffer.from([0xc3, 0xc5]);
+
+    const result = parseThermostatState(stateByte, payload);
+
+    expect(result.mode).toBe(7);
+    expect(result.target).toBe(5);
+    expect(result.current).toBe(-5);
+  });
+
+  it("should parse vacation mode (mode=2)", () => {
+    // Mode=2 (010), target=15°C (raw 25), current=18°C (raw 28)
+    // = 0000 0000 1000 0110 0101 1100
+    // = 0x00865C
+    const stateByte = 0x00;
+    const payload = Buffer.from([0x86, 0x5c]);
+
+    const result = parseThermostatState(stateByte, payload);
+
+    expect(result.mode).toBe(2);
+    expect(result.target).toBe(15);
+    expect(result.current).toBe(18);
+  });
+});
+
+describe("PlejdService updateThermostat", () => {
+  let service: PlejdService;
+
+  beforeEach(() => {
+    service = new PlejdService(
+      {
+        devices: [
+          {
+            name: "Thermostat",
+            model: "TRM-01",
+            identifier: 10,
+            outputType: "CLIMATE",
+            uuid: "test-uuid",
+            hidden: false,
+            plejdDeviceId: "AABBCCDDEEFF",
+          },
+        ],
+        scenes: [],
+        buttons: [],
+        cryptoKey: Buffer.from("FooBar", "utf8"),
+      },
+      Logger.withPrefix("PlejdServiceTests"),
+      () => {},
+    );
+  });
+
+  it("should queue a mode command", () => {
+    service.updateThermostat(10, { mode: 7 });
+
+    const queue = service.readQueue();
+    expect(queue.length).toBe(1);
+
+    const command = queue[0].toString("hex");
+    // device 10 = 0x0a
+    expect(command).toBe(
+      "0a" + PlejdCommand.RequestNoResponse + PlejdCommand.TrmMode + "07",
+    );
+  });
+
+  it("should queue a mode OFF command", () => {
+    service.updateThermostat(10, { mode: 0 });
+
+    const queue = service.readQueue();
+    expect(queue.length).toBe(1);
+
+    const command = queue[0].toString("hex");
+    expect(command).toBe(
+      "0a" + PlejdCommand.RequestNoResponse + PlejdCommand.TrmMode + "00",
+    );
+  });
+
+  it("should queue a target temperature command", () => {
+    // 22.5°C → 225 → 0xE1 0x00 (little-endian)
+    service.updateThermostat(10, { targetTemp: 22.5 });
+
+    const queue = service.readQueue();
+    expect(queue.length).toBe(1);
+
+    const command = queue[0].toString("hex");
+    expect(command).toBe(
+      "0a" +
+        PlejdCommand.RequestNoResponse +
+        PlejdCommand.TrmSetpoint +
+        "e100",
+    );
+  });
+
+  it("should queue a target temperature command for 30°C", () => {
+    // 30°C → 300 → 0x2C 0x01 (little-endian)
+    service.updateThermostat(10, { targetTemp: 30 });
+
+    const queue = service.readQueue();
+    expect(queue.length).toBe(1);
+
+    const command = queue[0].toString("hex");
+    expect(command).toBe(
+      "0a" +
+        PlejdCommand.RequestNoResponse +
+        PlejdCommand.TrmSetpoint +
+        "2c01",
+    );
+  });
+
+  it("should queue a PWM duty command", () => {
+    service.updateThermostat(10, { pwmDuty: 75 });
+
+    const queue = service.readQueue();
+    expect(queue.length).toBe(1);
+
+    const command = queue[0].toString("hex");
+    expect(command).toBe(
+      "0a" + PlejdCommand.RequestNoResponse + PlejdCommand.TrmPwmDuty + "4b",
+    );
+  });
+
+  it("should queue both mode and temperature commands", () => {
+    service.updateThermostat(10, { mode: 7, targetTemp: 22 });
+
+    const queue = service.readQueue();
+    expect(queue.length).toBe(2);
+
+    // Temperature is added second (unshift puts it first in queue)
+    const tempCmd = queue[0].toString("hex");
+    expect(tempCmd).toContain(PlejdCommand.TrmSetpoint);
+
+    const modeCmd = queue[1].toString("hex");
+    expect(modeCmd).toContain(PlejdCommand.TrmMode);
   });
 });
