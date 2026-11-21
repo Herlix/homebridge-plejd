@@ -1,3 +1,7 @@
+#### 1.14.0 (2026-11-21)
+
+Add experimental thermostat support (WPH-01, TRM-01)
+
 #### 1.13.2 (2026-04-07)
 
 Add timout on disconnects. (On linux BlueZ can hang during disconnect)
