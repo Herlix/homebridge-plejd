@@ -149,10 +149,10 @@ describe("parseThermostatState", () => {
     // Mode=7 (Normal), no error, target=30°C (raw 40), current=22°C (raw 32)
     // Bit layout: 0000 000M MMET TTTT TTCC CCCC
     // Mode=7 (111), Error=0, Target=40 (0101000), Current=32 (100000)
-    // = 0000 0001 1101 0100 0100 0000
-    // = 0x01D440
+    // = 0000 0001 1100 1010 0010 0000
+    // = 0x01CA20
     const stateByte = 0x01; // high byte
-    const payload = Buffer.from([0xd4, 0x40]); // middle and low bytes
+    const payload = Buffer.from([0xca, 0x20]); // middle and low bytes
 
     const result = parseThermostatState(stateByte, payload);
 
@@ -166,7 +166,7 @@ describe("parseThermostatState", () => {
   it("should parse state with heating active", () => {
     // Same as above but with 3rd payload byte indicating heating
     const stateByte = 0x01;
-    const payload = Buffer.from([0xd4, 0x40, 0x80]);
+    const payload = Buffer.from([0xca, 0x20, 0x80]);
 
     const result = parseThermostatState(stateByte, payload);
 
@@ -178,7 +178,7 @@ describe("parseThermostatState", () => {
 
   it("should parse state with heating inactive", () => {
     const stateByte = 0x01;
-    const payload = Buffer.from([0xd4, 0x40, 0x00]);
+    const payload = Buffer.from([0xca, 0x20, 0x00]);
 
     const result = parseThermostatState(stateByte, payload);
 
@@ -188,10 +188,10 @@ describe("parseThermostatState", () => {
   it("should parse OFF mode (mode=0)", () => {
     // Mode=0, no error, target=25°C (raw 35), current=20°C (raw 30)
     // Mode=0 (000), Error=0, Target=35 (0100011), Current=30 (011110)
-    // = 0000 0000 0010 0011 0011 1110
-    // = 0x00233E
+    // = 0000 0000 0000 1000 1101 1110
+    // = 0x0008DE
     const stateByte = 0x00;
-    const payload = Buffer.from([0x23, 0x3e]);
+    const payload = Buffer.from([0x08, 0xde]);
 
     const result = parseThermostatState(stateByte, payload);
 
